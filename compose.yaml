@@ -1,0 +1,31 @@
+services:
+  nodehub:
+    build:
+      context: .
+      target: server
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - type: bind
+        source: ./config/config.json
+        target: /app/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - nodehub-data:/data
+    networks:
+      - management
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  nodehub-data:
+networks:
+  management:
+    name: nodehub-management

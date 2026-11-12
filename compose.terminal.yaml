@@ -1,0 +1,11 @@
+# Legacy manual SSH-key mounts only; automatic provisioning uses the base Compose.
+# Optional: docker compose -f compose.yaml -f compose.terminal.yaml up -d --build
+services:
+  nodehub:
+    volumes:
+      - type: bind
+        source: ./secrets/ssh
+        target: /run/nodehub-ssh
+        read_only: true
+        bind:
+          create_host_path: false

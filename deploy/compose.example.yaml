@@ -1,0 +1,37 @@
+# Standalone example for the current automatic root-terminal workflow.
+# From the repository root:
+#   cp config/config.example.json config/config.json
+#   docker compose -p node_hub -f deploy/compose.example.yaml up -d --build
+# Set password_hash and file permissions first; see docs/docker.md.
+services:
+  nodehub:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: server
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - type: bind
+        source: ../config/config.json
+        target: /app/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - nodehub-data:/data
+    networks:
+      - management
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  nodehub-data:
+networks:
+  management:
+    name: nodehub-management

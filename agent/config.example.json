@@ -1,0 +1,10 @@
+{
+  "server": "https://hub.example.com",
+  "serial": "",
+  "identity_file": "/var/lib/nodehub-agent/identity.json",
+  "ca_file": "",
+  "ssh_port": 22,
+  "heartbeat_seconds": 30,
+  "reconnect_max_seconds": 60,
+  "max_sessions": 2
+}

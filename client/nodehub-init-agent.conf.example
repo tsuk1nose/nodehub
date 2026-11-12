@@ -1,0 +1,6 @@
+# Optional systemd drop-in for templates with Agent + OpenSSH installed.
+# Install as /etc/systemd/system/nodehub-init.service.d/agent.conf.
+# Enable terminal on the center and configure the Agent before cloning.
+[Service]
+ExecStart=
+ExecStart=/usr/local/sbin/nodehub-init --mesh-install-hook /usr/local/lib/nodehub/mesh-install --agent-config /etc/nodehub-agent/config.json

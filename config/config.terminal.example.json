@@ -1,0 +1,42 @@
+{
+  "listen": ":8080",
+  "database": "/data/nodehub.db",
+  "web_dir": "/app/web",
+  "poll_interval_seconds": 60,
+  "auth": {
+    "enabled": true,
+    "username": "admin",
+    "password_hash": "REPLACE_WITH_BCRYPT_HASH",
+    "secure_cookie": true,
+    "session_hours": 12
+  },
+  "headscale": {
+    "enabled": false,
+    "internal_url": "http://headscale:8080",
+    "public_url": "https://headscale.example.com",
+    "api_key": "",
+    "user_id": "1",
+    "tags": []
+  },
+  "meshcentral": {
+    "enabled": false,
+    "internal_url": "wss://meshcentral:443/control.ashx",
+    "public_url": "https://meshcentral.example.com/",
+    "username": "",
+    "password": "",
+    "mesh_id": "",
+    "device_url_template": ""
+  },
+  "terminal": {
+    "enabled": true,
+    "allowed_origins": [
+      "https://hub.example.com"
+    ],
+    "heartbeat_seconds": 30,
+    "timeout_seconds": 90,
+    "max_sessions": 10,
+    "max_sessions_per_node": 2,
+    "idle_seconds": 300,
+    "max_duration_seconds": 3600
+  }
+}

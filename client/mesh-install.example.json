@@ -1,0 +1,5 @@
+{
+  "binary": "/opt/nodehub/bootstrap/meshagent",
+  "settings": "/opt/nodehub/bootstrap/meshagent.msh",
+  "sha256": "REPLACE_WITH_VERIFIED_BINARY_SHA256"
+}

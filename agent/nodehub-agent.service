@@ -1,0 +1,30 @@
+[Unit]
+Description=Node Hub native terminal agent
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=nodehub-agent
+Group=nodehub-agent
+ExecStart=/usr/local/sbin/nodehub-agent -config /etc/nodehub-agent/config.json
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+StateDirectory=nodehub-agent
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

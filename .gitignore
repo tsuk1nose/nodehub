@@ -1,0 +1,54 @@
+# Local configuration and credentials
+/config/*.json
+!/config/*.example.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Runtime data and build output
+/data/
+/bin/
+/dist/
+/web/dist/
+node_modules/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.log
+coverage.out
+__pycache__/
+.pytest_cache/
+.DS_Store
+# Node activation and recovery files
+**/activation.json
+**/state.json
+**/ssh-provision.json
+*.local.json
+# Native terminal deployment secrets
+/secrets/
+/agent/config.json
+/agent/identity.json
+/agent/identity.json.lock
+
+/tmp/
+# Deployment overrides, backups and local agent installation material
+/backups/
+/artifacts/
+/compose.override.yaml
+/compose.override.yml
+/compose.*.local.yaml
+/compose.*.local.yml
+/deploy/*.local.yaml
+/deploy/*.local.yml
+/client/mesh-install.json
+*.msh
+*.p12
+*.pfx
+*.crt
+*.cer
+**/.ssh/
+**/id_ed25519
+**/id_ecdsa
+**/id_rsa

@@ -1,0 +1,16 @@
+[Unit]
+Description=Node Hub first-boot registration
+Wants=network-online.target
+After=network-online.target tailscaled.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/nodehub-init --mesh-install-hook /usr/local/lib/nodehub/mesh-install
+Restart=on-failure
+RestartSec=60
+RemainAfterExit=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
