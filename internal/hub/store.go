@@ -33,6 +33,7 @@ type Node struct {
 	MeshID         string `json:"mesh_id"`
 	MeshState      string `json:"mesh_state"`
 	MeshSeen       string `json:"mesh_seen"`
+	PublicIP       string `json:"public_ip"`
 	MeshURL        string `json:"mesh_url"`
 }
 type Token struct {
@@ -103,6 +104,10 @@ func OpenStore(path string) (*Store, error) {
 		return nil, e
 	}
 
+	if e = s.ensurePublicIP(); e != nil {
+		db.Close()
+		return nil, e
+	}
 	return s, nil
 }
 func (s *Store) Close() error { return s.db.Close() }
@@ -196,11 +201,11 @@ func (s *Store) AuthenticateNode(id, key string) bool {
 	return e == nil && digest(key) == hash
 }
 
-const nodeColumns = `serial,created_at,stage,error,headscale_id,headscale_key,headscale_state,headscale_seen,addresses,mesh_id,mesh_state,mesh_seen`
+const nodeColumns = `serial,created_at,stage,error,headscale_id,headscale_key,headscale_state,headscale_seen,addresses,mesh_id,mesh_state,mesh_seen,public_ip`
 
 func scanNode(r interface{ Scan(...any) error }) (Node, error) {
 	var n Node
-	e := r.Scan(&n.Serial, &n.CreatedAt, &n.Stage, &n.Error, &n.HeadscaleID, &n.HeadscaleKey, &n.HeadscaleState, &n.HeadscaleSeen, &n.Addresses, &n.MeshID, &n.MeshState, &n.MeshSeen)
+	e := r.Scan(&n.Serial, &n.CreatedAt, &n.Stage, &n.Error, &n.HeadscaleID, &n.HeadscaleKey, &n.HeadscaleState, &n.HeadscaleSeen, &n.Addresses, &n.MeshID, &n.MeshState, &n.MeshSeen, &n.PublicIP)
 	return n, e
 }
 func (s *Store) Nodes() ([]Node, error) {
@@ -305,5 +310,37 @@ func (s *Store) ensurePreauthID() error {
 		}
 	}
 	_, e = s.db.Exec(`INSERT OR IGNORE INTO schema_version VALUES(4)`)
+	return e
+}
+
+func (s *Store) ensurePublicIP() error {
+	rows, e := s.db.Query(`PRAGMA table_info(nodes)`)
+	if e != nil {
+		return e
+	}
+	exists := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, kind string
+		var defaultValue any
+		if e = rows.Scan(&cid, &name, &kind, &notnull, &defaultValue, &pk); e != nil {
+			rows.Close()
+			return e
+		}
+		if name == "public_ip" {
+			exists = true
+		}
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	if !exists {
+		if _, e = s.db.Exec(`ALTER TABLE nodes ADD COLUMN public_ip TEXT NOT NULL DEFAULT ''`); e != nil {
+			return e
+		}
+	}
+	_, e = s.db.Exec(`INSERT OR IGNORE INTO schema_version VALUES(6)`)
 	return e
 }

@@ -96,7 +96,7 @@ func TestMeshCentralProtocolAndBinding(t *testing.T) {
 			t.Error("invalid MeshCentral request")
 		}
 		_ = c.WriteJSON(map[string]any{"action": "serverinfo"})
-		_ = c.WriteJSON(map[string]any{"action": "nodes", "responseid": "nodehub", "nodes": map[string]any{"mesh//group": []any{map[string]any{"_id": "node//device", "name": id, "conn": 1}}}})
+		_ = c.WriteJSON(map[string]any{"action": "nodes", "responseid": "nodehub", "nodes": map[string]any{"mesh//group": []any{map[string]any{"_id": "node//device", "name": id, "conn": 1, "ip": "8.8.4.4"}}}})
 	}))
 	defer remote.Close()
 	c := Config{PollSeconds: 60}
@@ -136,7 +136,7 @@ func TestMeshCentralProtocolAndBinding(t *testing.T) {
 	}
 	u.Sync(context.Background())
 	n, _ := s.Node(id)
-	if n.MeshID != "node//device" || n.MeshState != "online" {
+	if n.MeshID != "node//device" || n.MeshState != "online" || n.PublicIP != "8.8.4.4" {
 		t.Fatal(n)
 	}
 }
@@ -182,5 +182,21 @@ func TestHeadscalePreauthIDBinding(t *testing.T) {
 	upstreamID = "77"
 	if e := u.BindHead(context.Background(), id, key); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestMeshPublicIP(t *testing.T) {
+	for _, value := range []string{"", "invalid", "192.168.1.2", "10.0.0.1", "100.64.0.2", "127.0.0.1", "::1", "fe80::1", "fc00::1", "224.0.0.1", "::ffff:192.168.1.2"} {
+		if got := meshPublicIP(value); got != "" {
+			t.Errorf("non-public address accepted: %s", value)
+		}
+	}
+	for _, value := range []string{"8.8.4.4", "2606:4700:4700::1111"} {
+		if meshPublicIP(value) != value {
+			t.Errorf("public IP lost: %s", value)
+		}
+	}
+	if meshPublicIP("::ffff:8.8.4.4") != "8.8.4.4" {
+		t.Fatal("mapped IPv4 not normalized")
 	}
 }

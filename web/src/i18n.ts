@@ -6,6 +6,9 @@ let saved: string | null = null
 try { saved = localStorage.getItem('nodehub-language') } catch { /* Storage can be disabled. */ }
 export const locale = ref<Locale>(saved === 'zh-CN' ? 'zh-CN' : 'en')
 const zh: Record<string, string> = {
+ "Public IP": "公网 IP",
+ "Last public source IP observed by MeshCentral; may reflect a proxy or VPN exit.": "MeshCentral 最近观察到的公网来源 IP，可能是代理或 VPN 出口。",
+ "Search serial / IP address": "搜索序列号 / IP 地址",
   "Prepare a factory image": "准备出厂镜像",
   "Run as root on the template and enter the batch token. Then shut down and clone; deployed nodes initialize automatically.": "在模板以 root 执行并输入批量令牌，然后关机克隆；克隆机首次启动自动初始化。",
   "Copy command": "复制指令",

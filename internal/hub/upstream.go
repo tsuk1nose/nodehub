@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -40,6 +41,7 @@ type MeshNode struct {
 	Host   string `json:"rname"`
 	MeshID string `json:"meshid"`
 	Conn   int    `json:"conn"`
+	IP     string `json:"ip"`
 }
 type Upstream struct {
 	cfg       Config
@@ -323,15 +325,16 @@ func (u *Upstream) Sync(ctx context.Context) {
 				if n.MeshID == "" {
 					continue
 				}
-				state, seen := "missing", n.MeshSeen
+				state, seen, publicIP := "missing", n.MeshSeen, n.PublicIP
 				if v, ok := byID[n.MeshID]; ok {
 					state = "offline"
+					publicIP = meshPublicIP(v.IP)
 					if v.Conn&1 != 0 {
 						state = "online"
 						seen = now()
 					}
 				}
-				_, _ = u.store.db.Exec(`UPDATE nodes SET mesh_state=?,mesh_seen=? WHERE serial=?`, state, seen, n.Serial)
+				_, _ = u.store.db.Exec(`UPDATE nodes SET mesh_state=?,mesh_seen=?,public_ip=? WHERE serial=?`, state, seen, publicIP, n.Serial)
 			}
 		}
 		_ = u.store.SyncStatus(src, "ok", true)
@@ -379,4 +382,18 @@ func matchesIssuedPreauth(issued, returned string) bool {
 
 func (u *Upstream) meshDialer() websocket.Dialer {
 	return websocket.Dialer{HandshakeTimeout: 15 * time.Second, TLSClientConfig: &tls.Config{InsecureSkipVerify: u.cfg.MeshCentral.TLSSkipVerify}}
+}
+
+// MeshCentral reports the connection source address, which may be a proxy or LAN.
+// Never label a private, CGNAT, or otherwise non-global address as a public IP.
+func meshPublicIP(value string) string {
+	addr, err := netip.ParseAddr(strings.TrimSpace(value))
+	if err != nil {
+		return ""
+	}
+	addr = addr.Unmap()
+	if !addr.IsGlobalUnicast() || addr.IsPrivate() || netip.MustParsePrefix("100.64.0.0/10").Contains(addr) {
+		return ""
+	}
+	return addr.String()
 }
