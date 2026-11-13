@@ -72,7 +72,7 @@ Registration and finalization have distinct progress. Failed steps must remain r
 
 ## 6. Storage and boot
 
-Tailscale, MeshAgent, native Agent, hostname, machine-id, SSH host keys, and authorization remain at default root filesystem paths. Establish their durable baseline before OverlayFS; do not move them to node `/data`.
+MeshAgent is installed entirely at `/data/nodehub/meshagent`; missing `/data` stops only MeshAgent. Tailscale, native Agent, hostname, machine-id, SSH host keys, and authorization retain their existing root filesystem paths. Establish the durable root baseline before OverlayFS. No writable-root overlay helper is enabled.
 
 Node `/data` uses CoW; the final filesystem and mount setup are not implemented. Mount failure must not block boot or root-based remote management. Dependent business tasks should degrade or wait, not write into an unmounted fallback directory.
 

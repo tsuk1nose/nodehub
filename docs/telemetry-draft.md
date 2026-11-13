@@ -6,7 +6,7 @@ Date: 2026-11-09 · Status: future discussion; **not implemented in the current 
 
 The separately authorized [native terminal Agent](native-terminal.md) adds heartbeat/basic system information. It does not implement this draft's historical metrics, offline metric queue, sessions, storage, alerts, or dashboards. Initialization recovery authentication is independent of future telemetry.
 
-Current service identities remain at default root paths. Node `/data` uses CoW and must not block boot if mounting fails. Suggestions below to store a future telemetry key in `/data` are candidates only and do not change today's service identity boundary.
+Current Tailscale/native Agent identities remain at root paths; MeshAgent is stored entirely at `/data/nodehub/meshagent`. Node `/data` uses CoW and must not block boot if mounting fails. Suggestions below to store a future telemetry key in `/data` are candidates only and do not change today's service identity boundary.
 
 ## 1. Goals
 

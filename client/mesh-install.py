@@ -35,7 +35,29 @@ def write_marker(path, value):
     finally:
         if os.path.exists(name): os.unlink(name)
 
-INSTALL_DIR = Path('/usr/local/mesh_services/meshagent')
+INSTALL_DIR = Path('/data/nodehub/meshagent')
+
+def require_data_mount():
+    if not os.path.ismount('/data'):
+        raise RuntimeError('/data must be mounted before installing MeshAgent')
+    fs = subprocess.check_output(['findmnt', '-n', '-o', 'FSTYPE', '--target', '/data'], text=True).strip()
+    if fs != 'btrfs' or os.statvfs('/data').f_flag & os.ST_RDONLY:
+        raise RuntimeError('/data must be writable Btrfs')
+    for path in (Path('/data'), Path('/data/nodehub')):
+        if path.is_symlink(): raise RuntimeError('MeshAgent data directories must not be symbolic links')
+        if path.exists() and path.stat().st_uid != 0:
+            raise RuntimeError('MeshAgent data directories must be owned by root')
+    parent = Path('/data/nodehub')
+    if parent.exists() and parent.stat().st_mode & 0o022:
+        raise RuntimeError('MeshAgent data directory must not be writable by other users')
+
+def install_mount_guard():
+    path = Path('/etc/systemd/system/meshagent.service.d/data.conf')
+    if path.is_symlink() or path.parent.is_symlink():
+        raise RuntimeError('MeshAgent mount guard must not be a symbolic link')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('[Unit]\nRequiresMountsFor=/data\nBindsTo=data.mount\nAfter=data.mount\nConditionPathIsMountPoint=/data\n[Service]\nExecStartPre=/usr/bin/mountpoint -q /data\n')
+    os.chmod(path, 0o644)
 
 def verify_service(directory=INSTALL_DIR):
     binary = directory / 'meshagent'
@@ -50,6 +72,7 @@ def verify_service(directory=INSTALL_DIR):
 
 def main():
     if os.geteuid() != 0: raise RuntimeError('Run the installer as root')
+    require_data_mount()
     serial = os.environ.get('NODEHUB_SERIAL', '')
     if not re.fullmatch('[A-Z0-9]{12}', serial): raise RuntimeError('A valid NODEHUB_SERIAL is required')
     config_path = trusted_file(sys.argv[1] if len(sys.argv) > 1 else '/etc/nodehub/mesh-install.json')
@@ -70,6 +93,8 @@ def main():
         if not owned: raise RuntimeError('An unmanaged MeshAgent installation exists; refusing to take it over')
         if subprocess.run(['systemctl', 'is-active', '--quiet', unit]).returncode == 0:
             verify_service()
+            install_mount_guard()
+            subprocess.run(['systemctl', 'daemon-reload'], check=True)
             return
     lines = settings.read_text().splitlines()
     values = dict(line.split('=', 1) for line in lines if '=' in line)
@@ -95,6 +120,7 @@ def main():
     result = subprocess.run(['./meshagent', '-install', '--copy-msh=1', '--agentName=' + serial], cwd=staged, capture_output=True, text=True, timeout=120)
     if result.returncode:
         raise RuntimeError('MeshAgent installation failed with exit code ' + str(result.returncode))
+    install_mount_guard()
     subprocess.run(['systemctl', 'daemon-reload'], check=True)
     subprocess.run(['systemctl', 'restart', unit], check=True)
     for _ in range(30):

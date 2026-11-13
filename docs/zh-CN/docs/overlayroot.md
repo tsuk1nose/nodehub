@@ -56,3 +56,9 @@ RAM overlay 只保留初始化时写入底层的身份，之后的 Tailscale 状
 首轮测试可采用持久基线加维护启动；生产前必须对长期更新策略另行验收。如果需要可持续写入且不能使用 `/data`，可考虑独立系统状态分区并绑定到默认服务目录，但这需要明确分区方案，本次未实施。如果准备重新安装系统，可先讨论预留约 2–4 GB 的独立系统状态分区，再分配其余 Btrfs `/data`；通过 bind 保持服务默认路径，并分别验收挂载缺失和迁移。不要据此直接缩容或重新分区当前设备。
 
 参考：[Debian overlayroot-chroot](https://manpages.debian.org/trixie/overlayroot/overlayroot-chroot.8.en.html)、[systemd 挂载语义](https://manpages.debian.org/trixie/systemd/systemd.mount.5.en.html)。设备内安装包自带配置注释和脚本是本版本的直接依据。
+
+## 当前存储方案
+
+仅将 MeshAgent 整个安装目录放到节点 `/data/nodehub/meshagent`。初始化要求 `/data` 已挂载为可写 Btrfs。服务通过 `RequiresMountsFor=/data`、`BindsTo=data.mount`、挂载点条件及启动前检查依赖该挂载；未挂载时不启动 MeshAgent、不生成备用身份，也不阻止系统开机。保留 `/data` 的 nofail 和有限等待时间。
+
+Tailscale 和原生 Agent 身份保持原根目录路径。初始化不再启用顶层 OverlayFS 可写修复服务，此前的可写 workaround 已被新安装方案取代；不会自动迁移旧测试机。MeshAgent 目录权限为 0700、设置为 0600，`/data/nodehub` 须为 root 拥有且其他用户不可写。新方案需新机验证跨重启身份、连接与缺少 /data 时开机行为；MeshAgent 测试不能替代只读根目录下 Tailscale 续期及重新登录验证。

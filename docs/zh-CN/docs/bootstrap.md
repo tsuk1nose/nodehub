@@ -64,6 +64,12 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
 
 首次真实克隆测试已自动清理并重启，根目录 OverlayFS、可写 Btrfs `/data`、Tailscale 和原生 Agent 均生效。但 MeshAgent 生成的服务指向安装临时目录，该目录删除后启动失败，身份数据库也随之丢失。因此曾经注册成功、瞬间 active 不足以证明安装成功。
 
-安装现改为永久目录 `/usr/local/mesh_services/meshagent`，保留程序、设置和数据库；安装后重启并检查服务路径与工作目录。所有权标记保留在 `/var/lib/nodehub-mesh/install.json`。收尾之前检查持久程序/设置/数据库、启动路径及服务运行状态，失败不删除初始化工具。这些保护已通过单元测试，修正后的完整设备安装仍需再次实测。
+安装现改为永久目录 `/data/nodehub/meshagent`，保留程序、设置和数据库；安装后重启并检查服务路径与工作目录。所有权标记保留在 `/var/lib/nodehub-mesh/install.json`。收尾之前检查持久程序/设置/数据库、启动路径及服务运行状态，失败不删除初始化工具。这些保护已通过单元测试，修正后的完整设备安装仍需再次实测。
 
 受影响节点应先查找原身份数据库。数据库确实丢失时，重新安装会生成不同 MeshCentral 身份，需显式恢复备份或重新关联，不应静默替换中心绑定。OverlayFS 模式下仅修改当前根目录会在重启后丢失，持久修复需受控维护启动。
+
+## 当前存储方案
+
+仅将 MeshAgent 整个安装目录放到节点 `/data/nodehub/meshagent`。初始化要求 `/data` 已挂载为可写 Btrfs。服务通过 `RequiresMountsFor=/data`、`BindsTo=data.mount`、挂载点条件及启动前检查依赖该挂载；未挂载时不启动 MeshAgent、不生成备用身份，也不阻止系统开机。保留 `/data` 的 nofail 和有限等待时间。
+
+Tailscale 和原生 Agent 身份保持原根目录路径。初始化不再启用顶层 OverlayFS 可写修复服务，此前的可写 workaround 已被新安装方案取代；不会自动迁移旧测试机。MeshAgent 目录权限为 0700、设置为 0600，`/data/nodehub` 须为 root 拥有且其他用户不可写。新方案需新机验证跨重启身份、连接与缺少 /data 时开机行为；MeshAgent 测试不能替代只读根目录下 Tailscale 续期及重新登录验证。

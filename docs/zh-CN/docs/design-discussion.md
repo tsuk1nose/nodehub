@@ -1,5 +1,7 @@
 # 边缘节点中心管理程序：需求与方案讨论稿
 
+> 当前决定覆盖下文历史上的全部服务留在根目录策略：仅 MeshAgent 整目录安装到 `/data/nodehub/meshagent`，Tailscale 与原生 Agent 路径不变，不启用顶层可写修复。
+
 [English](../../design-discussion.md) | 简体中文
 
 > 本文保留讨论历史；当前正式规范见 [需求与架构规范](specification.md)，实现进度见 [README](../README.md)。

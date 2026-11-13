@@ -74,9 +74,9 @@ Headscale 与 MeshCentral 由用户独立部署，已完成首次真实接口联
 
 ## 6. 存储与启动
 
-Tailscale、MeshAgent 等与生产台无关的服务身份和配置留在根目录默认位置，初始化时写入持久底层，不迁移到 `/data`。hostname、machine-id 和 SSH 主机密钥也需跨重启保留且不能克隆共享。
+MeshAgent 整目录安装在 `/data/nodehub/meshagent`，挂载失败时仅 MeshAgent 不启动。Tailscale 和原生 Agent 身份及配置仍留在根目录默认位置，初始化时写入持久底层。不再安装顶层可写修复服务。hostname、machine-id 和 SSH 主机密钥也需跨重启保留且不能克隆共享。
 
-`/data` 使用 CoW，具体文件系统待定；挂载失败不能阻止开机，也不能阻止使用根目录身份启动远程管理服务。依赖 `/data` 的生产任务可以降级或等待，不得写入未挂载的同名空目录。
+`/data` 使用 CoW，具体文件系统待定；挂载失败不能阻止开机，Tailscale 和原生 Agent 仍可使用根目录身份启动；MeshAgent 依赖该挂载。依赖 `/data` 的生产任务可以降级或等待，不得写入未挂载的同名空目录。
 
 CoW 与根目录 OverlayFS 分别设计。OverlayFS 的 upper/work 位置、是否重启清空、根目录维护模式尚待确定；运行期密钥变化、重新登录和服务升级不能仅依赖初始基线。初始化秘密放根目录时应在 OverlayFS 生效前删除；放 `/data` 时不受根目录删除遮蔽影响，但须确认真实挂载。
 

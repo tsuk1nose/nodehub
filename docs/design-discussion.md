@@ -1,5 +1,7 @@
 # Historical requirements and design discussion
 
+> Current storage decision supersedes the historical root-only policy below: MeshAgent is installed at `/data/nodehub/meshagent`; Tailscale/native Agent paths remain unchanged. No writable-root overlay helper is enabled.
+
 English | [简体中文](zh-CN/docs/design-discussion.md)
 
 Historical version: v0.10 · Date: 2026-11-09 · Status at that time: discussion before implementation.

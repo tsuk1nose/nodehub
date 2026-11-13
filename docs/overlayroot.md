@@ -18,7 +18,7 @@ The current `/data` fstab entry uses `defaults` without `nofail`; that does **no
 - Use an ephemeral RAM upper layer, discarded at reboot.
 - Use `recurse=0` so independent filesystems, especially `/data`, are not also made read-only.
 - Keep `/data` as Btrfs with CoW and a nonblocking mount policy.
-- Keep existing remote-service identities at default root paths, established durably before enabling overlay.
+- Keep Tailscale and native Agent identities at existing root paths; install MeshAgent entirely on mounted `/data`.
 
 Use `/etc/overlayroot.local.conf`, rather than editing the package-managed configuration or changing root's fstab type to `overlay`:
 
@@ -48,7 +48,7 @@ Change only the `/data` entry in the template's real `/etc/fstab`, retaining its
 UUID=REPLACE_WITH_DATA_UUID /data btrfs defaults,nofail,x-systemd.device-timeout=5s,x-systemd.mount-timeout=15s 0 0
 ```
 
-Validate syntax using `findmnt --verify --verbose`, then `systemctl daemon-reload`. Choose timeouts that fit actual hardware; they bound waiting, not repair a damaged filesystem. With `nofail`, business services should explicitly depend on `/data` if required (for example `RequiresMountsFor=/data`), while Tailscale, MeshAgent, SSH, and Node Hub Agent must remain independent. Business tasks must not write into an unmounted fallback directory. Do not add automount casually: it changes when access may block.
+Validate syntax using `findmnt --verify --verbose`, then `systemctl daemon-reload`. Choose timeouts that fit actual hardware; they bound waiting, not repair a damaged filesystem. With `nofail`, business services should explicitly depend on `/data` if required (for example `RequiresMountsFor=/data`), while Tailscale, SSH, and Node Hub Agent remain independent. MeshAgent explicitly depends on `/data` and remains stopped when it is missing. Business tasks must not write into an unmounted fallback directory. Do not add automount casually: it changes when access may block.
 
 Seal machine-id and SSH host identities correctly for cloning. Do not retain registered Tailscale/MeshAgent state, Node Hub state/keys, or an already initialized host. `--prepare-image` installs Node Hub tools without enrollment. The preparation command prompts for and saves the shared batch token for unattended clone first boot.
 
@@ -66,12 +66,18 @@ The installed `overlayroot-chroot` tool can access the lower root for controlled
 
 ## 6. Mutable service identity: unresolved long-term policy
 
-A RAM upper layer preserves the initial lower-layer keys but discards **later** writes at reboot. Tailscale state/key renewal, MeshAgent upgrades, and similar changes may therefore roll back. Keeping the credentials at default root paths and outside `/data` is respected, but it does not automatically make post-boot changes durable.
+A RAM upper layer preserves the initial lower-layer keys but discards **later** writes at reboot. Tailscale state/key renewal and other root-path changes may therefore roll back; MeshAgent writes now persist on `/data`. Keeping Tailscale/native Agent credentials at their root paths does not make later writes durable.
 
-For the initial test plan, establish and validate a durable baseline and perform controlled maintenance boots. Before unattended production, choose and test a durable update policy. A separate persistent system-state partition with bind mounts at default service paths is a possible future layout without using `/data`, but it needs an explicit disk-layout decision and has not been installed. If reinstalling the OS anyway, reserving roughly 2–4 GB for that separate system-state filesystem is a candidate to discuss before allocating all remaining space to Btrfs `/data`. Bind service state at its existing default paths, order only the dependent services after that mount, and test missing-state/rollback behavior. This would require a separate migration plan; it is not a request to shrink or repartition the currently inspected disk. Do not silently move credentials into `/data` or promise indefinite identity stability from a RAM overlay alone.
+For the initial test plan, establish and validate a durable baseline and perform controlled maintenance boots. Before unattended production, choose and test a durable update policy. A separate persistent system-state partition with bind mounts at default service paths is a possible future layout without using `/data`, but it needs an explicit disk-layout decision and has not been installed. If reinstalling the OS anyway, reserving roughly 2–4 GB for that separate system-state filesystem is a candidate to discuss before allocating all remaining space to Btrfs `/data`. Bind service state at its existing default paths, order only the dependent services after that mount, and test missing-state/rollback behavior. This would require a separate migration plan; it is not a request to shrink or repartition the currently inspected disk. The approved exception is MeshAgent on `/data`; other service paths remain unchanged.
 
 ## References
 
 - The inspected package's `/etc/overlayroot.conf`, initramfs hook, init-bottom script, and `/usr/sbin/overlayroot-chroot` are the version-specific primary evidence.
 - [Debian overlayroot maintenance command](https://manpages.debian.org/trixie/overlayroot/overlayroot-chroot.8.en.html)
 - [systemd mount/fstab semantics, including nofail and timeouts](https://manpages.debian.org/trixie/systemd/systemd.mount.5.en.html)
+
+## Current storage policy
+
+Only MeshAgent's complete installation directory is stored on node `/data`, at `/data/nodehub/meshagent`. `/data` must be a mounted, writable Btrfs filesystem during initialization. The systemd drop-in uses `RequiresMountsFor=/data`, `BindsTo=data.mount`, a mount-point condition, and an explicit pre-start mount check. Missing `/data` prevents MeshAgent startup without preventing OS boot; no fallback identity is created. Keep `/data` mounted with `nofail` and bounded timeouts.
+
+Tailscale and native Agent identities retain their existing root paths. The initializer does not enable a service to make the root OverlayFS writable. The previous writable-overlay workaround is superseded for new installations; existing test nodes are not migrated automatically. Persistent MeshAgent directory mode is 0700, and settings are 0600; `/data/nodehub` must be root-owned and not writable by other users. This new storage arrangement requires fresh-device acceptance, including multiple reboots and missing-/data boot. Tailscale renewal/relogin on a read-only root is not validated by MeshAgent tests.

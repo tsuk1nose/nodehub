@@ -28,9 +28,9 @@ class AutomaticInitializationTest(unittest.TestCase):
                      '/etc/systemd/system/nodehub-init.service.d/bootstrap.conf']
             retained = ['/var/lib/nodehub-agent/identity.json', '/var/lib/tailscale/tailscaled.state',
                         '/usr/local/sbin/nodehub-agent', '/root/.ssh/authorized_keys',
-                        '/usr/local/mesh_services/meshagent/meshagent',
-                        '/usr/local/mesh_services/meshagent/meshagent.msh',
-                        '/usr/local/mesh_services/meshagent/meshagent.db']
+                        '/data/nodehub/meshagent/meshagent',
+                        '/data/nodehub/meshagent/meshagent.msh',
+                        '/data/nodehub/meshagent/meshagent.db']
             for name in owned + retained:
                 path = local(name); path.parent.mkdir(parents=True, exist_ok=True); path.write_text('preserve' if name in retained else 'bootstrap')
             client = Mock()
@@ -38,9 +38,9 @@ class AutomaticInitializationTest(unittest.TestCase):
             commands = []
             def run(argv, **kwargs):
                 commands.append(argv)
-                if argv[:2] == ['systemctl', 'show']: return 'path=' + str(local('/usr/local/mesh_services/meshagent/meshagent')) + ' ; argv[]=meshagent'
+                if argv[:2] == ['systemctl', 'show']: return 'path=' + str(local('/data/nodehub/meshagent/meshagent')) + ' ; argv[]=meshagent'
                 return 'ext4\n' if argv[0] == 'findmnt' else ''
-            with patch.object(init, 'DEFAULT_STATE', state), patch.object(init, 'Path', local), patch.object(init, '__file__', '/usr/local/sbin/nodehub-init'), patch.object(init, 'Client', return_value=client), patch.object(init, 'run', side_effect=run), patch.object(init, 'trusted_hook', return_value='/hook'), patch.object(init.os, 'geteuid', return_value=0), patch('sys.argv', ['nodehub-init', '--finalize', '--overlay-hook', '/hook']):
+            with patch.object(init.os.path, 'ismount', return_value=True), patch.object(init, 'DEFAULT_STATE', state), patch.object(init, 'Path', local), patch.object(init, '__file__', '/usr/local/sbin/nodehub-init'), patch.object(init, 'Client', return_value=client), patch.object(init, 'run', side_effect=run), patch.object(init, 'trusted_hook', return_value='/hook'), patch.object(init.os, 'geteuid', return_value=0), patch('sys.argv', ['nodehub-init', '--finalize', '--overlay-hook', '/hook']):
                 init.main()
             for name in owned: self.assertFalse(local(name).exists(), name)
             self.assertFalse(state.exists())
@@ -57,16 +57,16 @@ class AutomaticInitializationTest(unittest.TestCase):
             state = local('/var/lib/nodehub-init'); state.mkdir(parents=True)
             (state / 'state.json').write_text(json.dumps({'server': 'https://hub.example.com', 'serial': 'ABCDEFGHIJKL', 'credential': 'private'}))
             for name in ('meshagent', 'meshagent.msh', 'meshagent.db'):
-                file = local('/usr/local/mesh_services/meshagent') / name
+                file = local('/data/nodehub/meshagent') / name
                 file.parent.mkdir(parents=True, exist_ok=True); file.write_text('identity')
             client = Mock(); client.request.return_value = {'node': {'headscale_id': '1', 'mesh_id': 'node//test'}}
             commands = []
             def run(argv, **kwargs):
                 commands.append(argv)
-                if argv[:2] == ['systemctl', 'show']: return 'path=' + str(local('/usr/local/mesh_services/meshagent/meshagent')) + ' ; argv[]=meshagent'
+                if argv[:2] == ['systemctl', 'show']: return 'path=' + str(local('/data/nodehub/meshagent/meshagent')) + ' ; argv[]=meshagent'
                 if argv == ['/hook']: raise RuntimeError('overlay prerequisite missing')
                 return 'ext4\n'
-            with patch.object(init, 'DEFAULT_STATE', state), patch.object(init, 'Path', local), patch.object(init, 'Client', return_value=client), patch.object(init, 'run', side_effect=run), patch.object(init, 'trusted_hook', return_value='/hook'), patch.object(init.os, 'geteuid', return_value=0), patch('sys.argv', ['nodehub-init', '--finalize', '--overlay-hook', '/hook']):
+            with patch.object(init.os.path, 'ismount', return_value=True), patch.object(init, 'DEFAULT_STATE', state), patch.object(init, 'Path', local), patch.object(init, 'Client', return_value=client), patch.object(init, 'run', side_effect=run), patch.object(init, 'trusted_hook', return_value='/hook'), patch.object(init.os, 'geteuid', return_value=0), patch('sys.argv', ['nodehub-init', '--finalize', '--overlay-hook', '/hook']):
                 with self.assertRaisesRegex(RuntimeError, 'prerequisite'): init.main()
             self.assertTrue((state / 'state.json').exists())
             self.assertNotIn(['systemctl', 'reboot'], commands)

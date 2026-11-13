@@ -256,7 +256,9 @@ def main():
             hook = trusted_hook(args.overlay_hook)
             # Refuse destructive cleanup when a transient installation only
             # appeared online once. Both executable and identity must survive.
-            mesh_dir = Path('/usr/local/mesh_services/meshagent')
+            if not os.path.ismount('/data'):
+                raise RuntimeError('/data is not mounted; refusing cleanup')
+            mesh_dir = Path('/data/nodehub/meshagent')
             for name in ('meshagent', 'meshagent.msh', 'meshagent.db'):
                 if not (mesh_dir / name).is_file():
                     raise RuntimeError('Persistent MeshAgent installation is incomplete; refusing cleanup')

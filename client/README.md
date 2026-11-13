@@ -47,7 +47,7 @@ After reboot verify root mount, hostname, service identity/connectivity, and `/d
 
 ## Storage boundary
 
-The initializer does not create/mount `/data`, move Tailscale/MeshAgent credentials there, or depend on its mount. Establish the root filesystem's persistent identity baseline before OverlayFS.
+The initializer does not create or mount `/data`. MeshAgent is installed entirely at `/data/nodehub/meshagent` and requires that writable Btrfs mount; Tailscale and native Agent paths remain unchanged. Establish the root filesystem's persistent identity baseline before OverlayFS.
 
 ## Verified MeshAgent binary hook
 
