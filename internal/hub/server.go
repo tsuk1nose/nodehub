@@ -38,6 +38,7 @@ func NewServerWithTargets(c Config, s *Store, targets map[string]remote.Target) 
 	a.gateway = remote.New(c.Terminal, targets, remote.Hooks{Event: s.agentEvent, Identity: s.identity, Seen: s.seen, Audit: s.audit, OwnerValid: a.ownerValid, Target: a.sshTarget})
 	a.routes()
 	a.terminalRoutes()
+	a.bootstrapRoutes()
 	return a
 }
 func (a *Server) RunSync(ctx context.Context) { go a.gateway.Run(ctx); a.u.Run(ctx) }
@@ -148,7 +149,7 @@ func (a *Server) routes() {
 			fail(w, 500, "Query failed")
 			return
 		}
-		reply(w, 200, map[string]any{"sources": ss, "poll_interval_seconds": a.cfg.PollSeconds, "meshcentral_url": a.cfg.MeshCentral.PublicURL})
+		reply(w, 200, map[string]any{"sources": ss, "poll_interval_seconds": a.cfg.PollSeconds, "meshcentral_url": a.cfg.MeshCentral.PublicURL, "bootstrap_available": a.bootstrapAvailable()})
 	}))
 	a.mux.HandleFunc("GET /api/tokens", a.admin(func(w http.ResponseWriter, r *http.Request) {
 		ts, e := a.s.Tokens()
@@ -214,6 +215,33 @@ func (a *Server) routes() {
 			return
 		}
 		reply(w, 200, map[string]any{"node": n, "headscale_url": a.cfg.Headscale.PublicURL})
+	}))
+	a.mux.HandleFunc("POST /api/node/{serial}/meshcentral-auto-bind", a.node(func(w http.ResponseWriter, r *http.Request) {
+		serial := r.PathValue("serial")
+		nodes, err := a.u.MeshNodes(r.Context())
+		if err != nil {
+			fail(w, 502, "MeshCentral query failed")
+			return
+		}
+		candidate := ""
+		for _, n := range nodes {
+			if n.MeshID == a.cfg.MeshCentral.MeshID && (strings.EqualFold(n.Name, serial) || strings.EqualFold(n.Host, serial)) {
+				if candidate != "" {
+					fail(w, 409, "Multiple MeshCentral devices match this serial")
+					return
+				}
+				candidate = n.ID
+			}
+		}
+		if candidate == "" {
+			fail(w, 409, "MeshAgent has not appeared yet")
+			return
+		}
+		if err := a.u.BindMesh(r.Context(), serial, candidate); err != nil {
+			fail(w, 409, "MeshCentral binding conflict")
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
 	}))
 	a.mux.HandleFunc("POST /api/node/{serial}/headscale-key", a.node(func(w http.ResponseWriter, r *http.Request) {
 		key, e := a.u.Preauth(r.Context(), r.PathValue("serial"))

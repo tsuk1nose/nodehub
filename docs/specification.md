@@ -41,7 +41,7 @@ Recovery uses an independent per-node random Bearer credential over HTTPS; store
 
 Configure listener, database, polling, local sign-in, upstream internal/public URLs, Headscale API key/user/tags, MeshCentral Login Token/group, and optional validated deep-link template. Docker DNS names are internal only and must not be issued as public device addresses.
 
-Read-only mount a permission-restricted local configuration; never bake credentials into images. Recreate after changes to reload and remount the file. Hot reload and automatic upstream credential rotation are outside the MVP.
+Read-only mount a permission-restricted local configuration; never bake credentials into images. Recreate after changes to reload and remount the file. Hot reload and automatic upstream credential rotation are outside the MVP. Each upstream has an explicit `tls_skip_verify` flag, default false, scoped only to its internal HTTPS/WSS client; Agent and node HTTPS validation remain independent.
 
 Local single-administrator authentication is enabled by default with bcrypt, HttpOnly/SameSite cookies, and configurable Secure cookies. It can be disabled behind Authelia; the operator must protect all management routes. Machine routes use their own token/device authentication and must not be intercepted by interactive sign-in.
 
@@ -113,3 +113,10 @@ Real upstream registration/binding, trusted binary installation, automatic root 
 - [Headscale v0.29.7](https://github.com/juanfont/headscale/tree/v0.29.7)
 - [MeshCentral 1.3.1](https://github.com/Ylianst/MeshCentral/tree/1.3.1)
 - [Telemetry draft and security references](telemetry-draft.md)
+
+
+## 11. HTTPS bootstrap and inspected overlay plan
+
+The center can distribute an allowlisted installer/package manifest. The UI generates a root command from its current origin, while the node prompts for enrollment authorization through a no-echo terminal. Node-authenticated metadata supplies MeshCentral download URLs without center management credentials. Image preparation prompts for and saves the batch token without enrolling the template. Clone first boot automatically associates the unique MeshCentral group/serial match, cleans bootstrap files and credentials, prepares root OverlayFS, and reboots. Real boot acceptance remains pending. See [bootstrap](bootstrap.md).
+
+The inspected Debian template supports `overlayroot=tmpfs:recurse=0,swap=0`, with independent writable Btrfs `/data` and a reviewed nofail policy. The [OverlayFS plan](overlayroot.md) separates template work, activation, acceptance, recovery, and the unresolved durability of post-boot credential updates. No boot changes were applied during inspection.

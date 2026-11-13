@@ -2,7 +2,7 @@
 
 [English](../../../client/README.md) | 简体中文
 
-当前提供可恢复的登记和 Tailscale 注册流程，MeshAgent 安装提供经实机验证的二进制 hook，也可替换为自己的本地脚本。OverlayFS 与 `/data` CoW 的具体方案尚未定稿，不自动修改分区或启动配置。
+当前提供可恢复的登记和 Tailscale 注册流程，MeshAgent 安装提供经实机验证的二进制 hook，也可替换为自己的本地脚本。已给出 OverlayFS 与 Btrfs 挂载建议及示例 hook，重启和故障验收尚未完成，不自动修改分区或启动配置。
 
 ## 制作模板
 
@@ -37,7 +37,7 @@
 /usr/local/sbin/nodehub-init --finalize --overlay-hook /usr/local/lib/nodehub/enable-overlay
 ```
 
-工具要求两个上游均已绑定，标记等待重启，先停用并删除首次启动服务及可选 `agent.conf` 覆盖文件、删除激活文件与安装的初始化程序，落盘后执行 hook 准备下次 OverlayFS，再重启。这样清理中断不会提前启用 OverlayFS。保留 `/var/lib/nodehub-init/state.json` 里的本机独立凭据及恢复进度，不保留共享激活令牌。
+工具要求两个上游均已绑定，标记等待重启，先停用并删除首次启动服务及可选 `agent.conf` / `bootstrap.conf` 覆盖文件、删除激活文件与安装的初始化程序，落盘后执行 hook 准备下次 OverlayFS，再重启。这样清理中断不会提前启用 OverlayFS。保留 `/var/lib/nodehub-init/state.json` 里的本机独立凭据及恢复进度，不保留共享激活令牌。
 
 清理途中断电时，通过 MeshCentral 或外部恢复介质重新提供同版工具，使用既有状态重试，不能清空状态重新登记。生产无人值守最终化的断电恢复还需 Debian 实机测试，当前不声称已验收。
 
@@ -79,3 +79,7 @@ systemctl daemon-reload
 命令在本仓库根目录执行。此时不要启动初始化或登记模板：确认没有已生成的节点 / Agent 身份，关机克隆。覆盖文件会让所有克隆节点首次启动时带 `--agent-config` 自动安装 root 授权。仍需按前文准备激活文件和 MeshAgent hook。
 
 不启用原生终端时不用安装该覆盖文件。升级旧部署时先更新中心与初始化程序，再用原状态重试，不删除节点身份。覆盖文件含有可选参数；更改首次启动服务后需检查实际 ExecStart，并在最终化前验证浏览器终端返回 `root`。
+
+## HTTPS 安装与 OverlayFS
+
+可使用 [交互安装器](../docs/bootstrap.md) 在节点隐藏输入令牌，也可通过 `--prepare-image` 输入并保存批量令牌、安装模板工具而不登记。克隆机首次启动自动关联 MeshCentral、清理初始化文件、启用根目录 OverlayFS 并重启。挂载与维护策略见 [OverlayFS 方案](../docs/overlayroot.md)。

@@ -21,8 +21,8 @@ Write new documentation, code comments, examples, and runtime messages in Englis
 ## Known limits
 
 - Docker configuration is validated; a complete container build/run still requires deployment acceptance. The earlier build attempt was blocked by the host Docker daemon's proxy.
-- MeshAgent installation uses a trusted local binary hook. Supply the binary, verified SHA256, and group `.msh` settings; no automatic online download is provided.
-- OverlayFS requires an explicitly supplied, device-validated hook. Partitioning, CoW setup, full clone lifecycle, and power-loss recovery are not automatically implemented or fully validated.
+- MeshAgent installation uses a trusted local binary hook. The optional [HTTPS bootstrap](docs/bootstrap.md) automatically downloads amd64 assets from the configured MeshCentral public HTTPS entry; manual binary/SHA256/settings remain supported.
+- HTTPS image preparation saves a batch token. Clone first boot automatically enrolls, associates MeshCentral, cleans bootstrap files, enables root OverlayFS, and reboots. End-to-end boot/power-loss acceptance remains pending; partitioning is not automated.
 - Linked Headscale/MeshCentral revocation remains unimplemented and returns HTTP 501. Revoking the native Agent affects only that channel.
 - No node deletion, historical telemetry, terminal recording, or full multi-user RBAC.
 - Device deep links remain optional and unverified; the UI falls back to the MeshCentral console.
@@ -54,7 +54,7 @@ See [Docker deployment](docs/docker.md) for networks, standalone Compose, Agent 
 
 ## Upstream configuration
 
-Separate internal management URLs from public URLs used by devices or browsers. Headscale accepts an internal HTTP address on a controlled network; MeshCentral requires a complete `ws://…/control.ashx` or `wss://…/control.ashx` URL. TLS verification cannot be disabled. Install private CA trust if necessary.
+Separate internal management URLs from public URLs used by devices or browsers. Headscale accepts an internal HTTP address on a controlled network; MeshCentral requires a complete `ws://…/control.ashx` or `wss://…/control.ashx` URL. TLS verification is enabled by default. For a trusted internal HTTPS/WSS connection, explicitly set that upstream’s `tls_skip_verify: true` to retain encryption without certificate verification. The setting does not affect node/Agent HTTPS trust. HTTP/WS listeners do not use this flag.
 
 Keep an upstream disabled until configured. Enabling it requires valid credentials, the intended Headscale numeric user ID, and the full MeshCentral group ID. Obtain them using the [credential and group lookup procedures](docs/first-deployment.md).
 
@@ -98,9 +98,13 @@ The client generates `request_id` and `credential` as independent 32-byte random
 
 Node recovery state lives in `/var/lib/nodehub-init`, not `/data`. The center stores credential/token hashes; a short-lived Headscale key is temporarily cached for retries and removed after binding. Automatic SSH private keys are also stored in center SQLite. Treat databases and backups as secrets.
 
+## Interactive HTTPS installation
+
+The enrollment page now provides a copyable command. Run it as root on the edge node and enter the enrollment token locally with hidden input. New Docker images include allowlisted scripts and Agent assets; existing configuration needs `bootstrap.enabled=true`. See [HTTPS bootstrap](docs/bootstrap.md) for prerequisites, image-only preparation, and acceptance limits.
+
 ## Debian images and native root terminals
 
-Follow the [client manual](client/README.md). Do not register the template, clone existing identities, or activate OverlayFS before durable registration and cleanup.
+Follow the [client manual](client/README.md) and the device-inspected [OverlayFS plan](docs/overlayroot.md). Do not register the template, clone existing identities, or activate OverlayFS before durable registration and cleanup.
 
 For native root terminals, configure the center's `allowed_origins`, install Agent/OpenSSH on the template, and use the [first-boot service override](client/nodehub-init-agent.conf.example). The initializer runs with `--agent-config /etc/nodehub-agent/config.json`. The Agent itself runs as an unprivileged relay; sshd executes the terminal as root. Old maintenance-account migration is described in the [native terminal manual](docs/native-terminal.md).
 

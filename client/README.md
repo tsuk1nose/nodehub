@@ -2,7 +2,9 @@
 
 English | [简体中文](../docs/zh-CN/client/README.md)
 
-The initializer supports recoverable registration and Tailscale enrollment, a verified local MeshAgent binary hook, and optional automatic root SSH provisioning. OverlayFS and node `/data` CoW setup are not automatically implemented; no partitioning or boot configuration is assumed.
+For a copyable HTTPS command with local token input, use the [bootstrap installer](../docs/bootstrap.md). For the inspected Debian layout and an example finalization hook, see the [OverlayFS plan](../docs/overlayroot.md).
+
+The initializer supports recoverable registration and Tailscale enrollment, a verified local MeshAgent binary hook, and optional automatic root SSH provisioning. The HTTPS path saves the batch token with `--prepare-image`; clones automatically associate MeshCentral, clean bootstrap files, enable root OverlayFS, and reboot. `/data` must already be Btrfs with CoW; the finalizer adds non-blocking mount options without repartitioning.
 
 ## Prepare the template
 
@@ -37,7 +39,7 @@ Run from an existing remote/local terminal, not the first-boot unit:
 /usr/local/sbin/nodehub-init --finalize --overlay-hook /usr/local/lib/nodehub/enable-overlay
 ```
 
-Both upstream bindings are required. The tool records awaiting-reboot state, stops/disables/removes the first-boot unit and optional `agent.conf`, removes activation and installed initializer, flushes writes, runs the next-boot hook, then reboots. Cleanup precedes overlay activation. Keep independent recovery state at `/var/lib/nodehub-init/state.json`; do not retain the shared activation secret.
+Both upstream bindings are required. The tool records awaiting-reboot state, stops/disables/removes the first-boot unit and optional `agent.conf`/`bootstrap.conf`, removes activation and installed initializer, flushes writes, runs the next-boot hook, then reboots. Cleanup precedes overlay activation. Keep independent recovery state at `/var/lib/nodehub-init/state.json`; do not retain the shared activation secret.
 
 If power fails during cleanup, restore the same tool through MeshCentral/external media and resume with the existing state. Do not erase state and register again. Full unattended power-loss acceptance is still pending.
 

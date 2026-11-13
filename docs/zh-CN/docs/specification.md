@@ -45,7 +45,7 @@ Headscale 与 MeshCentral 由用户独立部署，已完成首次真实接口联
 - MeshCentral 内部 WebSocket URL、外部控制台 URL、自动化用户名与凭据、设备组 ID。
 - 可选的经实机验证的 MeshCentral 设备直达 URL 模板。
 
-内部地址可以使用 Docker 服务名，不能下发给节点。中心配置文件由宿主机只读挂载，使用受限权限，不写入镜像。更新后重启中心；当前不实现热重载或自动凭据轮换。
+内部地址可以使用 Docker 服务名，不能下发给节点。每个上游可单独设置 `tls_skip_verify`，默认 false，仅对中心访问其内部 HTTPS/WSS 生效，不影响节点或 Agent 的 HTTPS。中心配置文件由宿主机只读挂载，使用受限权限，不写入镜像。更新后重启中心；当前不实现热重载或自动凭据轮换。
 
 默认开启单管理员登录，密码存 bcrypt 哈希，会话 cookie 使用 HttpOnly、SameSite 及可配置 Secure。可关闭本地登录以使用 Authelia；由部署方确保管理 API 无法绕过前置认证。节点机器接口独立使用注册或节点凭据，不走交互式登录。
 
@@ -122,3 +122,7 @@ Agent 私钥和系统服务在默认根目录路径，不依赖 `/data`；模板
 - [MeshCentral 1.3.1 MeshCtrl](https://github.com/Ylianst/MeshCentral/blob/1.3.1/meshctrl.js)
 
 版本文档用于接口适配依据，不代表已完成实际部署验证。README 必须准确列出本次实现及待联调项。
+
+## 11. HTTPS 安装与 OverlayFS 方案
+
+已提供前端复制指令、节点隐藏输入令牌的 [安装入口](bootstrap.md)，以及设备只读检查后的 [OverlayFS 方案](overlayroot.md)。组下载信息要求节点认证，不下发中心凭据。模板准备不登记，最终化与重启仍须显式执行；长期运行期身份更新的持久化策略尚待确认。

@@ -26,7 +26,7 @@ MeshCentral 使用 1.3.1 控制 WebSocket 的自动化账号认证与设备查�
 
 - Headscale / MeshCentral 已在真实部署完成注册、绑定和在线状态联调；Docker 镜像构建及容器运行仍需本次部署验收。
 - Debian 工具提供分阶段初始化；Tailscale 须预装，MeshAgent 提供本地受信二进制安装 hook，需自行准备二进制、SHA256 与设备组 `.msh` 文件，不自动在线下载安装。
-- OverlayFS 的启动方案仍需确认，只支持显式调用经审核 hook，不自动假设分区、文件系统或修改 initramfs。`/data` CoW 的具体格式化与挂载配置尚未实现。
+- 已给出设备检查后的 OverlayFS 方案与示例 hook，仍只支持显式调用经审核 hook，不自动假设分区、文件系统或修改 initramfs。`/data` CoW 的具体格式化与挂载配置尚未实现。
 - 联动吊销尚未实现；API 明确返回 501，不会只处理一边后误报成功。
 - 不实现节点删除或长期数据采集。
 
@@ -50,7 +50,7 @@ docker compose run --rm --no-deps nodehub -hash-password
 
 中心监听宿主机 `127.0.0.1:8080`，由用户现有入口转发。默认 Secure cookie 需要通过 HTTPS 访问；纯本地 HTTP 开发时显式设 `auth.secure_cookie=false`。关闭认证仅适用于已经保护管理入口的部署。
 
-容器间可共同加入 `nodehub-management` 网络，在配置中使用相应服务名。也可以填写现有网络可达地址。Headscale 的 HTTP 内部地址与公开登录地址分开；MeshCentral 内部 URL 是完整 `wss://…/control.ashx`，子域/路径按实际部署填写。默认验证 TLS 信任链与域名，不支持跳过校验；私有 CA 需加入容器信任库，或使用受控内部明文网络并显式填写 `ws://` / `http://`。
+容器间可共同加入 `nodehub-management` 网络，在配置中使用相应服务名。也可以填写现有网络可达地址。Headscale 的 HTTP 内部地址与公开登录地址分开；MeshCentral 内部 URL 是完整 `wss://…/control.ashx`，子域/路径按实际部署填写。默认验证 TLS 信任链与域名；受信内部连接可对相应上游设置 `tls_skip_verify: true`，仅影响中心访问该上游；私有 CA 需加入容器信任库，或使用受控内部明文网络并显式填写 `ws://` / `http://`。
 
 外部服务没有准备好时保持 `enabled=false`，界面显示“尚未配置”。配置启用后必须填写实际 API key、user ID、MeshCentral 账号和设备组 ID。凭据或地址改变后执行 `docker compose up -d --force-recreate` 重新加载配置，无需重新构建镜像。
 
@@ -143,3 +143,7 @@ Debian 13 / Intel N2840 已完成真实 Headscale、MeshCentral 注册与关联�
 节点初始化指定 `--agent-config /etc/nodehub-agent/config.json` 后，自动登记 Agent、安装 root 公钥授权并确认 SSH 配置。模板可统一使用 [首次启动服务覆盖示例](../../client/nodehub-init-agent.conf.example)，不需要逐台配置或重启中心。Agent 中继进程以普通用户运行，终端由 sshd 以 root 执行。中心数据库及备份包含每节点 SSH 私钥。
 
 完整 Go 网络集成测试、9 项客户端测试及静态检查通过；旧维护账号向 root 迁移、保留原有授权、重复初始化及浏览器 root 终端已在 N2840 实测通过。[操作与升级说明](docs/native-terminal.md)，[实机记录](docs/live-test-2026-11-12.md)。
+
+## 新增安装与存储方案
+
+前端可复制 HTTPS 安装指令，节点本地隐藏输入授权令牌；现有配置需开启 bootstrap 并重新构建镜像。见 [交互安装](docs/bootstrap.md) 和 [设备检查后的 OverlayFS 方案](docs/overlayroot.md)。安装不会启用 OverlayFS 或重启。

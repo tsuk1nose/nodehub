@@ -98,7 +98,20 @@ networks:
 
 这是对现有上游 Compose 的网络配置片段，不是完整的 Headscale 部署文件。先启动中心以创建网络，再启动或重建加入它的上游。若上游需要原有其他网络，应保留原有连接。
 
-也可直接使用公网入口进行初次联调，例如 Headscale 内部调用地址填 `https://headscale.example.com`，MeshCentral 填 `wss://meshcentral.example.com/control.ashx`。TLS 必须正常验证；Docker 服务名与证书域名不匹配时，不要通过关闭证书验证解决。
+也可直接使用公网入口进行初次联调，例如 Headscale 内部调用地址填 `https://headscale.example.com`，MeshCentral 填 `wss://meshcentral.example.com/control.ashx`。默认验证 TLS；受信内网可对相应上游显式设置 `tls_skip_verify: true`，不影响节点 HTTPS。
+
+### 本地 MeshCentral 可能使用 WS 而非 WSS
+
+即使浏览器入口是 HTTPS，本地/容器 MeshCentral 的实际监听也可能是**明文 WebSocket（`ws://`）**，例如由前置代理终止 TLS。`internal_url` 必须匹配实际监听协议，不能仅根据公网 URL 或端口号判断：
+
+```json
+"internal_url": "ws://meshcentral:888/control.ashx",
+"tls_skip_verify": false
+```
+
+以上为字段片段，保留其他配置，并替换服务名和端口。本次部署已确认使用 WS 后连接成功；这不代表所有 MeshCentral 部署默认使用 WS。只有内部监听本身提供 TLS 时才使用 WSS。
+
+`tls_skip_verify` 继续保留用于 HTTPS/WSS，但不能让 WSS 连接明文 WS 端口。`public_url` 仍可保持浏览器入口的 HTTPS 地址；WS 连接不使用 TLS 校验开关。
 
 ## 5. 导出 Debian Agent
 
@@ -133,3 +146,22 @@ docker build --target agent-binary --output type=local,dest=./bin .
 
 
 2026-11-12 更新：N2840 / Debian 13 设备与真实上游、实际浏览器 SSH 终端已通过主机进程方式联调；这不替代 Docker 镜像及容器部署验收。此次未启用 OverlayFS 或重启。
+
+## 上游同步失败排查
+
+`Not configured` 表示未启用；`Sync failed` 表示已启用但请求失败。修改只读挂载配置后需重建容器，尤其编辑器原子替换过文件时。
+
+当前版本会在状态和警告日志中提供经过脱敏的分类原因：DNS、拒绝连接、超时、TLS 域名或 CA、证书有效性、协议不匹配、HTTP 状态及控制认证拒绝，不输出凭据、原始 URL 或响应正文。更新代码并重新构建中心后查看下一轮同步结果。
+
+Headscale 容器间 HTTP 需检查共享网络、端口及 `listen_addr` 是否能从容器外访问，通常为 `0.0.0.0:8080`。401/403 时检查管理 API key 及有效期；本地健康检查不等于中心能访问其管理接口。
+
+MeshCentral 的 `wss://容器名:端口/control.ashx` 仍会校验容器名是否匹配证书。可使用证书匹配且可达的 DNS 地址；仅当明确启用 TLS offload、内部监听为明文且网络受控时使用 `ws://`。`expose` 不决定监听协议，对于受信本地部署，可对该上游设置 `tls_skip_verify: true`；这不会改变端口实际使用的协议。
+
+
+### 内部 TLS 校验开关
+
+`headscale` 和 `meshcentral` 均支持 `tls_skip_verify`，默认 false。受信内部 HTTPS/WSS 可显式设 true，仍加密传输但不验证上游证书。该字段不影响 `public_url`、节点或 Agent 的 HTTPS 校验；HTTP/WS 不使用它。容器间通信可避免依赖公网 DNS、回环路由和入口代理；使用公网域名也不一定经过公网，取决于实际解析和路由。
+
+## HTTPS 安装入口
+
+新镜像在 `/app/bootstrap` 内打包白名单脚本和 Agent；现有配置需增加 bootstrap 段并重建。前端复制指令，节点交互输入授权令牌，不需秘密文件挂载。见 [安装手册](bootstrap.md) 与 [OverlayFS 方案](overlayroot.md)。

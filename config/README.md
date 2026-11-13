@@ -40,12 +40,14 @@ Enter the password and press Enter. Paste the full result into `auth.password_ha
 | --- | --- |
 | `headscale.enabled` | Enable only after this section has real values |
 | `headscale.internal_url` | Management address reachable by the center, using Docker DNS or HTTPS |
+| `headscale.tls_skip_verify` | Default false; explicitly skip certificate verification only for this upstream’s internal HTTPS connection |
 | `headscale.public_url` | Login address reachable by nodes |
 | `headscale.api_key` | Management API key, not a node preauth key |
 | `headscale.user_id` | Numeric target user ID encoded as a JSON string; example `1` is not guaranteed correct |
 | `headscale.tags` | Preauth tags according to your Headscale policy; may be empty |
 | `meshcentral.enabled` | Enable only after this section has real values |
-| `meshcentral.internal_url` | Complete control WebSocket URL, such as `wss://meshcentral.example.com/control.ashx` |
+| `meshcentral.internal_url` | Complete control WebSocket URL; local plaintext listeners may need `ws://meshcentral:888/control.ashx`, while TLS listeners use `wss://…/control.ashx` |
+| `meshcentral.tls_skip_verify` | Default false; explicitly skip certificate verification only for this upstream’s internal WSS connection |
 | `meshcentral.public_url` | Browser-accessible console URL |
 | `meshcentral.username` / `password` | The paired Login Token username (`~t:…`) and password |
 | `meshcentral.mesh_id` | Complete device-group ID, such as `mesh//…`; not a name or Node ID |
@@ -71,3 +73,10 @@ Automatic provisioning uses root. Do not add `nodes`, per-node usernames, privat
 Use the base Compose or `deploy/compose.example.yaml`, without `secrets/ssh`. `compose.terminal.yaml` is retained only for legacy manual file-based targets. Existing root authorizations are preserved. The Agent is an unprivileged relay; the shell runs as root. Database backups contain login private keys.
 
 The UI defaults to English and offers Simplified Chinese in its language selector; language is a browser preference, not a server configuration field. Setup and migration are covered by the [native terminal manual](../docs/native-terminal.md).
+
+For local MeshCentral, see [WS versus WSS](../docs/docker.md#choose-ws-or-wss-for-a-local-meshcentral-listener). The TLS-skip flag does not fix a protocol mismatch and has no effect on WS.
+
+
+## HTTPS bootstrap distribution
+
+`bootstrap.enabled` enables the code-only installer endpoints; `bootstrap.assets_dir` is the packaged asset root, `/app/bootstrap` in Docker. New examples enable it. Existing configs must add the section explicitly and deploy a rebuilt image. For local development, point it at the repository root after building `bin/` assets. The UI exposes the copyable command when assets are available. No token belongs in this section. See [bootstrap setup](../docs/bootstrap.md).

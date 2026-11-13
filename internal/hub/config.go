@@ -13,6 +13,10 @@ import (
 )
 
 type Config struct {
+	Bootstrap struct {
+		Enabled   bool   `json:"enabled"`
+		AssetsDir string `json:"assets_dir"`
+	} `json:"bootstrap"`
 	Terminal    remote.Config `json:"terminal"`
 	Listen      string        `json:"listen"`
 	Database    string        `json:"database"`
@@ -26,15 +30,17 @@ type Config struct {
 		SessionHours int    `json:"session_hours"`
 	} `json:"auth"`
 	Headscale struct {
-		Enabled     bool     `json:"enabled"`
-		InternalURL string   `json:"internal_url"`
-		PublicURL   string   `json:"public_url"`
-		APIKey      string   `json:"api_key"`
-		UserID      string   `json:"user_id"`
-		Tags        []string `json:"tags"`
+		Enabled       bool     `json:"enabled"`
+		TLSSkipVerify bool     `json:"tls_skip_verify"`
+		InternalURL   string   `json:"internal_url"`
+		PublicURL     string   `json:"public_url"`
+		APIKey        string   `json:"api_key"`
+		UserID        string   `json:"user_id"`
+		Tags          []string `json:"tags"`
 	} `json:"headscale"`
 	MeshCentral struct {
 		Enabled           bool   `json:"enabled"`
+		TLSSkipVerify     bool   `json:"tls_skip_verify"`
 		InternalURL       string `json:"internal_url"`
 		PublicURL         string `json:"public_url"`
 		Username          string `json:"username"`
@@ -113,6 +119,9 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if c.MeshCentral.Enabled && (c.MeshCentral.Username == "" || c.MeshCentral.Password == "" || c.MeshCentral.MeshID == "") {
 		return c, errors.New("MeshCentral username, password and mesh_id required")
+	}
+	if c.Bootstrap.AssetsDir == "" {
+		c.Bootstrap.AssetsDir = "/app/bootstrap"
 	}
 	c.Terminal.Defaults()
 	if e = c.Terminal.Validate(); e != nil {

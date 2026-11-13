@@ -76,7 +76,8 @@ func TestHeadscaleProvisionAndBinding(t *testing.T) {
 func TestMeshCentralProtocolAndBinding(t *testing.T) {
 	s := testStore(t)
 	_, token, _ := s.NewToken("init", "", 0)
-	id, _ := s.Register(context.Background(), token, randomHex(32), randomHex(32))
+	credential := randomHex(32)
+	id, _ := s.Register(context.Background(), token, randomHex(32), credential)
 	upgrader := websocket.Upgrader{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-meshauth") != "YWRtaW4=,c2VjcmV0" {
@@ -104,6 +105,28 @@ func TestMeshCentralProtocolAndBinding(t *testing.T) {
 	c.MeshCentral.Username = "admin"
 	c.MeshCentral.Password = "secret"
 	c.MeshCentral.MeshID = "mesh//group"
+	server := NewServer(c, s)
+	defer server.Close()
+	endpoint := "/api/node/" + id + "/meshcentral-auto-bind"
+	request := httptest.NewRequest("POST", endpoint, nil)
+	request.Header.Set("X-NodeHub-Request", "1")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != 401 {
+		t.Fatal("automatic binding requires node credentials", response.Code)
+	}
+	request = httptest.NewRequest("POST", endpoint, nil)
+	request.Header.Set("X-NodeHub-Request", "1")
+	request.Header.Set("Authorization", "Bearer "+credential)
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != 200 {
+		t.Fatal("automatic binding failed", response.Code, response.Body.String())
+	}
+	bound, _ := s.Node(id)
+	if bound.MeshID != "node//device" {
+		t.Fatal("automatic binding did not persist", bound.MeshID)
+	}
 	u := NewUpstream(c, s)
 	if e := u.BindMesh(context.Background(), id, "node//wrong"); e == nil {
 		t.Fatal("wrong device accepted")

@@ -239,13 +239,16 @@ func (s *Store) Backup(path string) error {
 	}
 	return e
 }
-func (s *Store) SyncStatus(source, state string, ok bool) error {
+func (s *Store) SyncStatus(source, state string, ok bool, detail ...string) error {
 	last := ""
 	if ok {
 		last = now()
 	}
 	_, e := s.db.Exec(`INSERT INTO sync_status(source,state,last_success,error) VALUES(?,?,?,?) ON CONFLICT(source) DO UPDATE SET state=excluded.state,last_success=CASE WHEN excluded.last_success='' THEN sync_status.last_success ELSE excluded.last_success END,error=excluded.error`, source, state, last, func() string {
 		if state == "error" {
+			if len(detail) > 0 {
+				return detail[0]
+			}
 			return "Connection or authentication failed; preserving the last known state"
 		}
 		return ""

@@ -22,11 +22,13 @@ For native root terminals, copy `config/config.terminal.example.json` instead. E
 | `auth.secure_cookie` | Keep true behind HTTPS |
 | `headscale.enabled` | true after filling this section |
 | `headscale.internal_url` | For an initial test, `https://headscale.example.com`, replaced with your actual entry |
+| `headscale.tls_skip_verify` | false by default; optional override for trusted internal HTTPS only |
 | `headscale.public_url` | The actual Headscale login address reachable by nodes |
 | `headscale.api_key` | A current management API key |
 | `headscale.user_id` | Actual target numeric user ID as a JSON string; do not assume `1` |
 | `meshcentral.enabled` | true after filling this section |
-| `meshcentral.internal_url` | Actual `wss://meshcentral.example.com/control.ashx` |
+| `meshcentral.internal_url` | Match the listener: local plaintext may use `ws://meshcentral:888/control.ashx`; use WSS only for a TLS listener |
+| `meshcentral.tls_skip_verify` | false by default; set true for the requested internal WSS certificate override |
 | `meshcentral.public_url` | Actual browser console entry |
 | `meshcentral.username` / `password` | Paired Login Token username (`~t:…`) and password |
 | `meshcentral.mesh_id` | Full group ID (`mesh//…` or `mesh/domain/…`), not a name/Node ID |
@@ -176,7 +178,7 @@ Acceptance:
 4. Wait one polling interval for both upstream states.
 5. Repeat the same initialization command. It must reuse the serial/external identities and leave the activation file deleted.
 
-`awaiting_binding` may remain after administrator confirmation because finalization is explicit. Do not clear state or run an unvalidated OverlayFS hook merely to remove that label. Finish basic acceptance before any `--finalize` operation.
+With HTTPS bootstrap, MeshCentral association and finalization are automatic. `awaiting_binding` indicates a pending upstream match; duplicates/conflicts stop progression. `awaiting_overlay` indicates cleanup/reboot scheduled, without claiming verified boot acceptance. Custom manual installations can still use `--finalize`.
 
 ## 4. Optional automatic root terminal
 
@@ -197,3 +199,7 @@ Keep the Compose SQLite volume; `docker compose down` retains it, `down -v` does
 The earlier test device retains upstream identities and a Node Hub identity tied to `https://localhost:18443`. Its temporary center configuration/database are in ignored `tmp/live-test/`, not distributed with the source. The native Agent is stopped and disabled; upstream/SSH services remain active. A new center cannot take over just by changing a URL: preserve database/state and plan address migration. There is no automated migration tool; do not delete identity files to bypass checks.
 
 Real upstream enrollment, retries, automatic root authorization/migration, and browser terminals have passed device tests. Production Docker runtime, complete clone/OverlayFS lifecycle, CoW mount-failure behavior, power-loss recovery, and linked revocation remain pending. Linked revocation returns 501; historical telemetry is not implemented.
+
+## Interactive installer and OverlayFS
+
+For the new HTTPS command and local hidden token prompt, see [bootstrap](bootstrap.md). Template prerequisites, Btrfs mount degradation, next-boot activation, maintenance, and mutable-identity limits are covered by the [OverlayFS plan](overlayroot.md). Neither is automatically finalized by installation.

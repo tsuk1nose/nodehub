@@ -3,6 +3,7 @@
 import argparse
 import fcntl
 import json
+import hashlib
 import os
 import pwd
 from pathlib import Path
@@ -171,13 +172,46 @@ def provision_ssh(client, state, state_dir):
                     old_authorized.unlink()
 
 
+def prepare_mesh(client, state):
+    # Management credentials stay on the center. Download URLs are returned only
+    # after this node proves its independent registration credential.
+    import platform
+    arch = {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(platform.machine(), '')
+    metadata = client.request('/node/' + state['serial'] + '/bootstrap?arch=' + arch)
+    folder = Path('/opt/nodehub/bootstrap')
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(folder, 0o700)
+    opener = urllib.request.build_opener(NoRedirect())
+    for field, filename, limit in [('binary_url', 'meshagent', 64 * 1024 * 1024), ('settings_url', 'meshagent.msh', 256 * 1024)]:
+        url = urllib.parse.urlsplit(metadata[field])
+        if url.scheme != 'https' or not url.hostname or url.username or url.password or url.fragment:
+            raise RuntimeError('MeshAgent downloads must use HTTPS without embedded credentials')
+        with opener.open(metadata[field], timeout=90) as response:
+            content = response.read(limit + 1)
+        if not content or len(content) > limit: raise RuntimeError('Invalid MeshAgent download size')
+        if field == 'binary_url' and not content.startswith(b'\x7fELF'):
+            raise RuntimeError('MeshAgent download is not a Linux ELF binary; check the public download entry')
+        fd, name = tempfile.mkstemp(dir=folder)
+        try:
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(content); stream.flush(); os.fsync(stream.fileno())
+            os.replace(name, folder / filename)
+        finally:
+            if os.path.exists(name): os.unlink(name)
+    atomic_json('/etc/nodehub/mesh-install.json', {
+        'binary': str(folder / 'meshagent'), 'settings': str(folder / 'meshagent.msh'),
+        'sha256': hashlib.sha256((folder / 'meshagent').read_bytes()).hexdigest(),
+    })
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--activation', default='/etc/nodehub/activation.json')
     ap.add_argument('--state-dir', type=Path, default=DEFAULT_STATE)
     ap.add_argument('--agent-config', help='Optional: enroll and enable the preinstalled native terminal Agent; enable terminal support on the center first')
+    ap.add_argument('--auto-mesh', action='store_true', help='Download MeshAgent and group settings through authenticated bootstrap metadata')
     ap.add_argument('--mesh-install-hook', help='Trusted local installer; receives the serial through NODEHUB_SERIAL')
-    ap.add_argument('--finalize', action='store_true', help='Clean up and reboot after registration and binding; must be explicitly requested')
+    ap.add_argument('--finalize', action='store_true', help='Run the detached cleanup and reboot phase')
+    ap.add_argument('--auto-finalize', action='store_true', help='Automatically bind MeshAgent, clean up, enable overlayroot, and reboot')
     ap.add_argument('--overlay-hook', help='Reviewed local script that prepares OverlayFS for the next boot without rebooting')
     ap.add_argument('--confirm-after-reboot', action='store_true', help='Mark initialization complete after verifying OverlayFS following reboot')
     args = ap.parse_args()
@@ -220,15 +254,21 @@ def main():
                 raise RuntimeError('Bind both upstream devices before finalizing')
             if not args.overlay_hook: raise RuntimeError('A device-validated --overlay-hook is required')
             hook = trusted_hook(args.overlay_hook)
-            # A separate explicit finalize invocation survives deletion of the first-boot service.
+            # A detached systemd unit survives stopping the first-boot service.
             c.stage('awaiting_overlay')
             state['finalizing'] = True
             atomic_json(state_file, state)
+            # Validate and prepare the next boot before removing recovery tools.
+            # This only writes configuration; root remains persistent until reboot.
+            run([hook])
             service = Path('/etc/systemd/system/nodehub-init.service')
             if service.exists():
                 run(['systemctl', 'disable', '--now', 'nodehub-init.service'])
                 service.unlink(missing_ok=True)
             Path('/etc/systemd/system/nodehub-init.service.d/agent.conf').unlink(missing_ok=True)
+            Path('/etc/systemd/system/nodehub-init.service.d/bootstrap.conf').unlink(missing_ok=True)
+            overrides = Path('/etc/systemd/system/nodehub-init.service.d')
+            if overrides.exists() and not any(overrides.iterdir()): overrides.rmdir()
             run(['systemctl', 'daemon-reload'])
             Path(args.activation).unlink(missing_ok=True)
             # Remove installed initialization entrypoint; source/recovery copy is external to the image.
@@ -237,12 +277,20 @@ def main():
             # Enable the next-boot overlay only after shared secrets and startup entrypoints are gone.
             # If interrupted earlier, the existing remote channels can restore this tool and retry.
             run(['sync'])
-            run([hook])  # Must be idempotent; never reboots itself.
+            import shutil
+            # Remove only files owned by the bootstrap workflow, preserving all
+            # installed agents, SSH authorizations, and their runtime identities.
+            for name in ('/etc/nodehub/mesh-install.json', '/usr/local/lib/nodehub/mesh-install',
+                         '/usr/local/lib/nodehub/enable-overlayroot'):
+                Path(name).unlink(missing_ok=True)
+            if Path('/opt/nodehub/bootstrap').exists():
+                shutil.rmtree(Path('/opt/nodehub/bootstrap'))
+            shutil.rmtree(args.state_dir)
             run(['sync'])
             print('Bootstrap entrypoints and credentials removed; rebooting. Verify through an existing remote channel after reboot.')
             run(['systemctl', 'reboot'])
             return
-        if state.get('finalizing'):
+        if state.get('finalizing') and not args.auto_finalize:
             raise RuntimeError('Finalization is in progress; resume with --finalize or confirm after reboot instead of registering again')
         if run(['findmnt', '-n', '-o', 'FSTYPE', '/']).strip() == 'overlay':
             raise RuntimeError('First registration requires a persistent writable root filesystem, not ephemeral OverlayFS')
@@ -282,13 +330,27 @@ def main():
         c.request('/node/' + state['serial'] + '/headscale-bind', {'node_key': key})
         c.stage('tailscale_ready')
         if not state.get('mesh_installed'):
+            if args.auto_mesh: prepare_mesh(c, state)
             if not args.mesh_install_hook: raise RuntimeError('Provide a reviewed MeshAgent installation hook; completed steps have been retained')
             env = dict(os.environ, NODEHUB_SERIAL=state['serial'])
             run([trusted_hook(args.mesh_install_hook)], env=env)
             state['mesh_installed'] = True
             atomic_json(state_file, state)
         c.stage('awaiting_binding')
-        print('Registration steps completed: ' + state['serial'] + '. Confirm the MeshCentral binding on the center, then explicitly run --finalize.')
+        if args.auto_finalize:
+            if not args.overlay_hook: raise RuntimeError('Automatic finalization requires the overlayroot hook')
+            c.request('/node/' + state['serial'] + '/meshcentral-auto-bind', {})
+            # Launch another unit: stopping nodehub-init must not kill cleanup.
+            command = ['systemd-run', '--unit=nodehub-finalize', '--collect',
+                       '--property=Restart=on-failure', '--property=RestartSec=60s',
+                       '--property=StartLimitIntervalSec=0',
+                       '--on-active=5s', '/usr/local/sbin/nodehub-init', '--finalize',
+                       '--state-dir', str(args.state_dir), '--activation', args.activation,
+                       '--overlay-hook', trusted_hook(args.overlay_hook)]
+            run(command)
+            print('Registration complete; automatic cleanup and reboot scheduled.')
+        else:
+            print('Registration steps completed: ' + state['serial'] + '. Finalization is available with --finalize.')
 
 if __name__ == '__main__':
     try: main()

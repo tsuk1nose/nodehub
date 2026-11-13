@@ -40,12 +40,14 @@ docker compose run --rm --no-deps nodehub -hash-password
 | --- | --- |
 | `headscale.enabled` | 是否连接 Headscale；启用前填写本组实际值 |
 | `headscale.internal_url` | 中心可访问的管理接口地址，可用容器服务名或 HTTPS 入口 |
+| `headscale.tls_skip_verify` | 默认 false，仅控制中心访问该上游 HTTPS 时是否跳过证书校验 |
 | `headscale.public_url` | 节点实际可访问的 Headscale 登录地址 |
 | `headscale.api_key` | Headscale 管理 API key，不是节点 preauth key |
 | `headscale.user_id` | 目标 Headscale 用户的数字 ID，以 JSON 字符串填写；示例 `1` 不保证适合实际部署 |
 | `headscale.tags` | 新节点预授权的标签列表，按实际 Headscale 策略配置，可留空 |
 | `meshcentral.enabled` | 是否连接 MeshCentral；启用前填写本组实际值 |
-| `meshcentral.internal_url` | 完整控制 WebSocket 地址，形如 `wss://meshcentral.example.com/control.ashx` |
+| `meshcentral.internal_url` | 完整控制 WebSocket 地址；本地明文监听可能应填 `ws://meshcentral:888/control.ashx`，TLS 监听才使用 WSS |
+| `meshcentral.tls_skip_verify` | 默认 false，受信内部 WSS 连接可显式设为 true |
 | `meshcentral.public_url` | 浏览器可访问的 MeshCentral 控制台地址 |
 | `meshcentral.username` / `password` | 同一 Login Token 生成的用户名 `~t:…` 与配套密码 |
 | `meshcentral.mesh_id` | 完整设备组 ID，形如 `mesh//…`，不是组名或设备 Node ID |
@@ -71,3 +73,9 @@ docker compose run --rm --no-deps nodehub -hash-password
 使用基础 `compose.yaml` 或独立 `deploy/compose.example.yaml`，不需要 `secrets/ssh`。`compose.terminal.yaml` 仅用于旧手工文件配置。root 的其他授权保留，重试不重复追加；Agent 中继进程保持普通用户，实际 shell 为 root。数据库和备份包含登录私钥，应按秘密保存。
 
 完整模板准备、安装和旧账号升级见 [原生终端手册](../docs/native-terminal.md)。
+
+本地 MeshCentral 详见 [WS 与 WSS 的区别](../docs/docker.md#本地-meshcentral-可能使用-ws-而非-wss)。跳过证书校验无法解决协议不匹配，对 WS 不生效。
+
+## HTTPS 安装资源
+
+`bootstrap.enabled` 开启代码安装入口，`bootstrap.assets_dir` 为资源目录，Docker 默认 `/app/bootstrap`。新示例已开启；现有配置需增加该段并重建镜像。前端在资源可用时显示复制指令，令牌由节点本地输入，不写在此配置。见 [安装手册](../docs/bootstrap.md)。

@@ -6,6 +6,14 @@ let saved: string | null = null
 try { saved = localStorage.getItem('nodehub-language') } catch { /* Storage can be disabled. */ }
 export const locale = ref<Locale>(saved === 'zh-CN' ? 'zh-CN' : 'en')
 const zh: Record<string, string> = {
+  "Prepare a factory image": "准备出厂镜像",
+  "Run as root on the template and enter the batch token. Then shut down and clone; deployed nodes initialize automatically.": "在模板以 root 执行并输入批量令牌，然后关机克隆；克隆机首次启动自动初始化。",
+  "Copy command": "复制指令",
+  "Copied": "已复制",
+  "Copy failed; select and copy the command manually.": "复制失败，请手动选择并复制指令。",
+  "Requires Debian 13, Python 3, curl, Tailscale, CA certificates, OpenSSH server, and overlayroot. Enrollment automatically enables root OverlayFS and reboots.": "需预装 Debian 13、Python 3、curl、Tailscale、CA 证书、OpenSSH server 和 overlayroot。登记成功后自动启用根目录 OverlayFS 并重启。",
+  "Bootstrap downloads are unavailable. Enable bootstrap and deploy its assets before using the installer.": "安装下载不可用，请先开启 bootstrap 并部署安装资源。",
+
   "Installation files must exist and use absolute paths": "安装文件必须是现有的绝对路径文件",
   "Installation files must be owned by root and not writable by other users": "安装文件必须由 root 拥有且其他用户不可写",
   "Run the installer as root": "必须使用 root 安装",
@@ -151,7 +159,6 @@ const zh: Record<string, string> = {
   "Edge node management": "边缘节点中心",
   "Node overview": "节点总览",
   "Enrollment tokens": "初始化授权",
-  "MVP · Single instance": "初版 · 单实例",
   "Sign out ↗": "退出登录 ↗",
   "Workspace": "工作空间",
   "Updated at ": "更新于 ",
@@ -193,7 +200,6 @@ const zh: Record<string, string> = {
   "0 means unlimited": "0 为不限次数",
   "Generate token": "生成令牌",
   "Save this token now; it is shown only once": "请立即保存，令牌仅显示这一次",
-  "Put it in the activation file token field; do not commit it to the repository.": "将它填入节点激活文件的 token 字段，不要上传到代码仓库。",
   "Saved; hide token": "已保存，隐藏",
   "Enrollment token history": "注册授权记录",
   "Used / limit": "已用 / 限额",
@@ -206,7 +212,6 @@ const zh: Record<string, string> = {
   "Revoke": "撤销",
   "No enrollment tokens yet": "尚无初始化授权",
   "Recent terminal sessions": "最近终端会话",
-  "Connection metadata only; keystrokes and screen content are not recorded": "仅记录连接信息，不记录键盘输入和屏幕内容",
   "Node": "节点",
   "Operator": "操作者",
   "Requested at": "请求时间",

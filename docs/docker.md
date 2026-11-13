@@ -106,9 +106,22 @@ networks:
 
 This is a network fragment, not a complete Headscale installation. Start the center first to create the network, then recreate upstream containers with the added connection. Retain their other required networks.
 
-For initial testing, use public HTTPS/WSS URLs such as `https://headscale.example.com` and `wss://meshcentral.example.com/control.ashx`. TLS verification is mandatory; do not disable it to accommodate Docker names that do not match certificates. Add trusted private CAs when needed.
+For initial testing, use public HTTPS/WSS URLs such as `https://headscale.example.com` and `wss://meshcentral.example.com/control.ashx`. TLS verification is on by default. Add trusted private CAs when needed, or explicitly set that upstream’s `tls_skip_verify: true` for a trusted internal HTTPS/WSS connection. The override skips certificate identity validation while retaining TLS encryption.
 
 A reverse proxy running in another container must reach the center through a shared network or deliberate host routing. Its own `127.0.0.1` is not the center.
+
+### Choose WS or WSS for a local MeshCentral listener
+
+A local/container MeshCentral listener may use **plain WebSocket (`ws://`)**, even when the browser-facing entry uses HTTPS. For example, a reverse proxy may terminate TLS while the container listens in plaintext. Match `internal_url` to the actual listener protocol, not the public URL or port number:
+
+```json
+"internal_url": "ws://meshcentral:888/control.ashx",
+"tls_skip_verify": false
+```
+
+This is a field excerpt; retain the remaining configuration and replace the service name/port. The operator confirmed a local deployment worked with WS rather than WSS. It is not a universal MeshCentral default. Use WSS when the internal listener itself provides TLS.
+
+`tls_skip_verify` remains supported for HTTPS/WSS, but cannot make WSS connect to a plaintext WS listener. `public_url` can remain the browser-facing HTTPS URL. On a WS connection, the TLS flag has no effect.
 
 ## 5. Agent binaries
 
@@ -132,3 +145,32 @@ Generated files are `bin/nodehub-agent-linux-amd64` / `bin/nodehub-agent-linux-a
 Base Compose, legacy overlay, and standalone example pass `docker compose config --quiet`. Backend/frontend builds and real N2840 browser SSH tests have passed. Configuration validation does not establish container runtime acceptance.
 
 The earlier complete image build was blocked while pulling base images by the host Docker daemon's proxy connection. No host proxy changes were made. Production Docker runtime, OverlayFS, and full clone acceptance remain separate deployment checks.
+
+## Troubleshooting upstream synchronization
+
+`Not configured` indicates an upstream is disabled. `Sync failed` means it is enabled but its request failed. Filling credentials alone does not enable a disabled source. Recreate after editing a read-only configuration bind, especially after an editor replaces the file atomically.
+
+Current builds expose sanitized failure categories in status and warn logs: DNS, connection refusal/timeout, TLS hostname/CA/validity, protocol mismatch, HTTP status, and rejected control authentication. They do not print credentials, raw URLs, or response bodies. After updating source, rebuild/recreate the center and inspect its next synchronization result.
+
+For container-to-container Headscale HTTP, verify a shared Docker network, the internal listening port, and a listener reachable outside its own loopback (typically `listen_addr: 0.0.0.0:8080`). API HTTP 401/403 requires checking the management key and expiry. A local health check does not establish center-to-container API access.
+
+For MeshCentral, `wss://container-name:port/control.ashx` still validates certificates against **container-name**. Use a reachable DNS URL matching the certificate, or use `ws://` only when that specific internal listener is explicitly configured for plaintext behind TLS offload on a controlled network. Do not assume `expose` decides whether the service uses TLS; it does not change the listener protocol. For the requested trusted local deployment, `tls_skip_verify: true` is an explicit per-upstream alternative; it does not change whether the port actually speaks TLS.
+
+
+### Internal TLS verification override
+
+Both `headscale` and `meshcentral` accept `tls_skip_verify` (default false). For example, keep the other MeshCentral fields and set:
+
+```json
+"meshcentral": {
+  "internal_url": "wss://meshcentral:888/control.ashx",
+  "tls_skip_verify": true
+}
+```
+
+This applies only to the center's control connection to that upstream. It does not disable node/Agent HTTPS validation, change `public_url`, or turn a plaintext listener into TLS. A Headscale `http://` URL is unaffected. Internal service names avoid public DNS/ingress routing; using a public hostname instead may depend on DNS, hairpin routing, reverse-proxy policies, and proxy availability. A public hostname may also resolve internally, so it does not necessarily traverse the public internet.
+
+
+## HTTPS installer assets
+
+The runtime image now packages allowlisted bootstrap scripts and native Agent binaries at `/app/bootstrap`. Add `bootstrap.enabled=true` and its `assets_dir` to existing configurations, rebuild/recreate, and use the command in Enrollment tokens. No extra secret mount is required. Machine entry paths and deployment steps are listed in [HTTPS bootstrap](bootstrap.md). The separate [OverlayFS plan](overlayroot.md) describes template preparation; bootstrap does not change mounts or reboot.

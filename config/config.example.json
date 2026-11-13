@@ -13,6 +13,7 @@
   "headscale": {
     "enabled": false,
     "internal_url": "http://headscale:8080",
+    "tls_skip_verify": false,
     "public_url": "https://headscale.example.com",
     "api_key": "",
     "user_id": "1",
@@ -21,6 +22,7 @@
   "meshcentral": {
     "enabled": false,
     "internal_url": "wss://meshcentral:443/control.ashx",
+    "tls_skip_verify": false,
     "public_url": "https://meshcentral.example.com/",
     "username": "",
     "password": "",
@@ -38,5 +40,9 @@
     "max_sessions_per_node": 2,
     "idle_seconds": 300,
     "max_duration_seconds": 3600
+  },
+  "bootstrap": {
+    "enabled": true,
+    "assets_dir": "/app/bootstrap"
   }
 }

@@ -28,7 +28,7 @@ docker compose run --rm --no-deps nodehub -hash-password
 | `headscale.api_key` | 你当前有效的 Headscale 管理 API key |
 | `headscale.user_id` | 实际目标 Headscale 用户的数字 ID，以字符串填写，不默认假定为 `1` |
 | `meshcentral.enabled` | `true` |
-| `meshcentral.internal_url` | 初次可填 `wss://meshcentral.example.com/control.ashx` |
+| `meshcentral.internal_url` | 匹配实际监听：本地明文可用 `ws://meshcentral:888/control.ashx`，监听本身提供 TLS 才用 WSS |
 | `meshcentral.public_url` | `https://meshcentral.example.com/` |
 | `meshcentral.username` / `password` | 有目标设备组权限的 Login Token 用户名（`~t:…`）及配套密码 |
 | `meshcentral.mesh_id` | 完整设备组 ID，形如 `mesh//…`，不是设备组名称或某台设备的 `node//…` |
@@ -97,6 +97,8 @@ MeshCentral 1.3.1 的 Login Token 是一组用于自动化登录的**临时用�
 更换时创建新 token，更新 NodeHub 配置并重建中心，确认同步成功后，再到 My Account 的登录令牌列表删除旧 token。`noauth-2d` 等认证失败提示应优先检查用户名 / 密码是否配对，以及 token 是否过期或被删除。
 
 依据：[MeshCentral 1.3.1 令牌创建页面](https://github.com/Ylianst/MeshCentral/blob/1.3.1/views/default.handlebars)、[服务端创建与权限检查](https://github.com/Ylianst/MeshCentral/blob/1.3.1/meshuser.js)。实际凭据仅放本地配置，不回填仓库示例。
+
+受信内部 HTTPS/WSS 可在对应的 `headscale` / `meshcentral` 中设置 `tls_skip_verify: true`（默认 false），只跳过中心访问该上游的证书校验；节点和 Agent 的 HTTPS 校验不变。HTTP/WS 地址不受该字段影响。
 
 ### 查询 MeshCentral 设备组 ID
 
@@ -212,3 +214,7 @@ SQLite 保存在 Compose 命名卷。停止服务时可用 `docker compose down`
 现有 `此前的实测节点` 已注册为 已分配的序列号，Tailscale 与 MeshAgent 保持运行，NodeHub Agent 停止且未设自启动。原中心数据库和配置位于本工作区被忽略的 `tmp/live-test/`；这些文件不随代码分发。设备恢复状态及 Agent 身份绑定临时地址 `https://localhost:18443`。新建中心不会自动接管该设备；当前无自动迁移工具，复用前需单独处理数据库和身份地址迁移，保留原状态，不能简单改配置或删身份重来。
 
 已实测上游注册、关联、重试、在线状态和 N2840 浏览器终端；Docker 镜像及容器部署仍由此次自行测试验收。OverlayFS、`/data` 挂载失败降级、完整克隆首次启动及联动吊销仍未完成验收；联动吊销接口当前返回 501。长期历史数据采集不在本阶段实现。
+
+## 新增交互安装
+
+前端指令、节点输入令牌与模板准备见 [HTTPS 安装器](bootstrap.md)，挂载与维护策略见 [OverlayFS 方案](overlayroot.md)。

@@ -3,12 +3,13 @@ package hub
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -49,7 +50,10 @@ type Upstream struct {
 }
 
 func NewUpstream(c Config, s *Store) *Upstream {
-	return &Upstream{cfg: c, store: s, http: &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(r *http.Request, v []*http.Request) error { return http.ErrUseLastResponse }}}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Explicit per-upstream opt-out; never mutate the global transport or Agent trust.
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: c.Headscale.TLSSkipVerify}
+	return &Upstream{cfg: c, store: s, http: &http.Client{Transport: transport, Timeout: 20 * time.Second, CheckRedirect: func(r *http.Request, v []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func (u *Upstream) head(ctx context.Context, method, path string, body, out any) error {
 	var buf bytes.Buffer
@@ -66,16 +70,19 @@ func (u *Upstream) head(ctx context.Context, method, path string, body, out any)
 	r.Header.Set("Content-Type", "application/json")
 	resp, e := u.http.Do(r)
 	if e != nil {
-		return errors.New("Headscale connection failed")
+		return upstreamConnectionError("Headscale", e, 0)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("Headscale HTTP %d", resp.StatusCode)
+		return upstreamConnectionError("Headscale", nil, resp.StatusCode)
 	}
 	if out == nil {
 		return nil
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(out)
+	if e = json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(out); e != nil {
+		return errors.New("Headscale returned an invalid or incompatible JSON response")
+	}
+	return nil
 }
 func (u *Upstream) HeadNodes(ctx context.Context) ([]HeadNode, error) {
 	var result struct {
@@ -123,7 +130,7 @@ func (u *Upstream) Preauth(ctx context.Context, id string) (string, error) {
 	return result.Key.Key, e
 }
 func (u *Upstream) MeshNodes(ctx context.Context) ([]MeshNode, error) {
-	d := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
+	d := u.meshDialer()
 	h := http.Header{}
 	enc := base64.StdEncoding.EncodeToString
 	h.Set("x-meshauth", enc([]byte(u.cfg.MeshCentral.Username))+","+enc([]byte(u.cfg.MeshCentral.Password)))
@@ -132,14 +139,18 @@ func (u *Upstream) MeshNodes(ctx context.Context) ([]MeshNode, error) {
 		defer resp.Body.Close()
 	}
 	if e != nil {
-		return nil, errors.New("MeshCentral connection or authentication failed")
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		return nil, upstreamConnectionError("MeshCentral", e, status)
 	}
 	defer c.Close()
 	c.SetReadLimit(8 << 20)
 	_ = c.SetReadDeadline(time.Now().Add(20 * time.Second))
 	_ = c.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	if e = c.WriteJSON(map[string]any{"action": "nodes", "meshid": u.cfg.MeshCentral.MeshID, "responseid": "nodehub"}); e != nil {
-		return nil, e
+		return nil, errors.New("MeshCentral control request failed")
 	}
 	for {
 		var m struct {
@@ -272,7 +283,8 @@ func (u *Upstream) Sync(ctx context.Context) {
 		if src == "headscale" {
 			list, e := u.HeadNodes(ctx)
 			if e != nil {
-				_ = u.store.SyncStatus(src, "error", false)
+				slog.Warn("upstream synchronization failed", "source", src, "reason", e.Error())
+				_ = u.store.SyncStatus(src, "error", false, e.Error())
 				continue
 			}
 			byID := map[string]HeadNode{}
@@ -299,7 +311,8 @@ func (u *Upstream) Sync(ctx context.Context) {
 		} else {
 			list, e := u.MeshNodes(ctx)
 			if e != nil {
-				_ = u.store.SyncStatus(src, "error", false)
+				slog.Warn("upstream synchronization failed", "source", src, "reason", e.Error())
+				_ = u.store.SyncStatus(src, "error", false, e.Error())
 				continue
 			}
 			byID := map[string]MeshNode{}
@@ -362,4 +375,8 @@ func matchesIssuedPreauth(issued, returned string) bool {
 	}
 	prefix := strings.TrimSuffix(returned, "***")
 	return len(prefix) >= 23 && strings.HasPrefix(issued, prefix)
+}
+
+func (u *Upstream) meshDialer() websocket.Dialer {
+	return websocket.Dialer{HandshakeTimeout: 15 * time.Second, TLSClientConfig: &tls.Config{InsecureSkipVerify: u.cfg.MeshCentral.TLSSkipVerify}}
 }
