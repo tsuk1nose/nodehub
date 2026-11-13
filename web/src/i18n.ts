@@ -248,7 +248,6 @@ const zh: Record<string, string> = {
   "Confirm binding": "确认绑定",
   "Open device in MeshCentral ↗": "进入 MeshCentral 对应设备 ↗",
   "Open MeshCentral console ↗": "打开 MeshCentral 控制台 ↗",
-  "Device deep links require validation; use the console entry for now.": "设备直达地址待实机验证；当前可使用控制台入口。",
   "Establishing session…": "正在建立会话…",
   "Cannot create terminal": "无法创建终端",
   "Invalid message received": "收到无效消息",
