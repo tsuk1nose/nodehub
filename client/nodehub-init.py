@@ -254,6 +254,16 @@ def main():
                 raise RuntimeError('Bind both upstream devices before finalizing')
             if not args.overlay_hook: raise RuntimeError('A device-validated --overlay-hook is required')
             hook = trusted_hook(args.overlay_hook)
+            # Refuse destructive cleanup when a transient installation only
+            # appeared online once. Both executable and identity must survive.
+            mesh_dir = Path('/usr/local/mesh_services/meshagent')
+            for name in ('meshagent', 'meshagent.msh', 'meshagent.db'):
+                if not (mesh_dir / name).is_file():
+                    raise RuntimeError('Persistent MeshAgent installation is incomplete; refusing cleanup')
+            command = run(['systemctl', 'show', 'meshagent.service', '-p', 'ExecStart', '--value'])
+            if 'path=' + str(mesh_dir / 'meshagent') + ' ' not in command:
+                raise RuntimeError('MeshAgent service points outside its persistent installation; refusing cleanup')
+            run(['systemctl', 'is-active', '--quiet', 'meshagent.service'])
             # A detached systemd unit survives stopping the first-boot service.
             c.stage('awaiting_overlay')
             state['finalizing'] = True

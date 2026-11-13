@@ -11,6 +11,8 @@ const zh: Record<string, string> = {
   "Copy command": "复制指令",
   "Copied": "已复制",
   "Copy failed; select and copy the command manually.": "复制失败，请手动选择并复制指令。",
+  "Install prerequisites on Debian 13 as root:": "在 Debian 13 上以 root 身份安装依赖：",
+  "Then prepare the image:": "然后准备镜像：",
   "Requires Debian 13, Python 3, curl, Tailscale, CA certificates, OpenSSH server, and overlayroot. Enrollment automatically enables root OverlayFS and reboots.": "需预装 Debian 13、Python 3、curl、Tailscale、CA 证书、OpenSSH server 和 overlayroot。登记成功后自动启用根目录 OverlayFS 并重启。",
   "Bootstrap downloads are unavailable. Enable bootstrap and deploy its assets before using the installer.": "安装下载不可用，请先开启 bootstrap 并部署安装资源。",
 

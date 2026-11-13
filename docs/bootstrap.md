@@ -67,3 +67,11 @@ The batch token is saved to `/etc/nodehub/activation.json` (root, mode 600). Cho
 Tests cover asset allowlisting, SHA256 metadata, disabled/incomplete packages, symlink refusal, authenticated group metadata, credential non-disclosure, HTTPS URL validation, unsupported architecture, and refusal of insecure password-input fallback. Installer assets compile and the frontend builds.
 
 The fresh inspected template was not registered or modified during OverlayFS investigation. Real online bootstrap, third-party download availability, complete clone registration, OverlayFS reboot, and `/data` failure scenarios require acceptance on a designated node with a real authorization token. Previous native root SSH tests are not a substitute for those new tests.
+
+## 6. MeshAgent persistence correction
+
+A first real clone test reached automatic cleanup/reboot with root OverlayFS and writable Btrfs `/data`; Tailscale and native Agent survived. MeshAgent registered initially but failed after installation cleanup because its generated service referenced a deleted `/tmp/nodehub-mesh-*` directory. Its identity database was also in that directory. Registration and a momentary active service were insufficient acceptance checks.
+
+The installer now runs MeshAgent installation from the permanent `/usr/local/mesh_services/meshagent` directory, retains its executable/settings/database, restarts the service, and validates its configured executable and working directory. Ownership metadata remains at `/var/lib/nodehub-mesh/install.json`. Finalization rejects a missing persistent executable/settings/database, an unexpected executable path, or an inactive service before removing initialization tools. These safeguards have unit coverage; the corrected install still needs a fresh real-device acceptance test.
+
+For an affected node, first search for the original identity database. If it is gone, do not silently replace the center binding: reinstalling creates a different MeshCentral identity. Restore an identity backup or perform an explicit recovery/reassociation. An overlay-mode repair is ephemeral unless also persisted through a controlled maintenance boot.
