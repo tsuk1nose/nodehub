@@ -39,6 +39,8 @@ initrd="/boot/initrd.img-$(uname -r)"
 lsinitramfs "$initrd" | grep -q '^scripts/init-bottom/overlayroot$' || {
     echo 'Rebuild and verify initramfs with overlayroot before finalizing.' >&2; exit 1;
 }
+python3 /usr/local/lib/nodehub/readonly-runtime
+systemctl daemon-reload
 pending=$(mktemp /etc/.nodehub-overlayroot.XXXXXX)
 trap 'rm -f -- "$pending"' EXIT
 printf '%s\n' 'overlayroot="tmpfs:recurse=0,swap=0"' 'overlayroot_cfgdisk="disabled"' > "$pending"

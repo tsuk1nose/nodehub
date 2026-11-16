@@ -13,7 +13,7 @@ import (
 
 var bootstrapCommon = []string{
 	"client/bootstrap.py", "client/nodehub-init.py", "client/mesh-install.py",
-	"client/install.sh", "client/nodehub-init.service", "client/enable-overlayroot.example.sh",
+	"client/install.sh", "client/nodehub-init.service", "client/enable-overlayroot.example.sh", "client/readonly-runtime.py",
 	"agent/install.sh", "agent/config.example.json", "agent/nodehub-agent.service",
 }
 

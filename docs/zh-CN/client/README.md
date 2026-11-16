@@ -83,3 +83,5 @@ systemctl daemon-reload
 ## HTTPS 安装与 OverlayFS
 
 可使用 [交互安装器](../docs/bootstrap.md) 在节点隐藏输入令牌，也可通过 `--prepare-image` 输入并保存批量令牌、安装模板工具而不登记。克隆机首次启动自动关联 MeshCentral、清理初始化文件、启用根目录 OverlayFS 并重启。挂载与维护策略见 [OverlayFS 方案](../docs/overlayroot.md)。
+
+[只读运行目录](../docs/readonly-runtime.md)

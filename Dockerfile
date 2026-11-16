@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 COPY --from=backend /nodehub /app/nodehub
 COPY --from=web /src/web/dist /app/web
-COPY client/bootstrap.sh client/bootstrap.py client/nodehub-init.py client/mesh-install.py client/install.sh client/nodehub-init.service client/enable-overlayroot.example.sh /app/bootstrap/client/
+COPY client/bootstrap.sh client/bootstrap.py client/nodehub-init.py client/mesh-install.py client/install.sh client/nodehub-init.service client/enable-overlayroot.example.sh client/readonly-runtime.py /app/bootstrap/client/
 COPY agent/install.sh agent/config.example.json agent/nodehub-agent.service /app/bootstrap/agent/
 COPY --from=backend /nodehub-agent-linux-amd64 /app/bootstrap/bin/nodehub-agent-linux-amd64
 COPY --from=backend /nodehub-agent-linux-arm64 /app/bootstrap/bin/nodehub-agent-linux-arm64

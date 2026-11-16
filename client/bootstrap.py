@@ -31,7 +31,7 @@ def center_url(value):
 def checked_file(name):
     return name in {
         'client/bootstrap.py', 'client/nodehub-init.py', 'client/mesh-install.py',
-        'client/install.sh', 'client/nodehub-init.service', 'client/enable-overlayroot.example.sh',
+        'client/install.sh', 'client/nodehub-init.service', 'client/enable-overlayroot.example.sh', 'client/readonly-runtime.py',
         'agent/install.sh', 'agent/config.example.json', 'agent/nodehub-agent.service',
         'bin/nodehub-agent-linux-amd64', 'bin/nodehub-agent-linux-arm64',
     }
@@ -218,7 +218,7 @@ def main():
     opener = urllib.request.build_opener(NoRedirect())
     manifest = json.loads(download(opener, server + '/bootstrap/manifest?arch=' + arch, 128 * 1024))
     files = manifest['files']
-    required = {'client/nodehub-init.py','client/mesh-install.py','client/install.sh','client/nodehub-init.service','client/enable-overlayroot.example.sh'}
+    required = {'client/nodehub-init.py','client/mesh-install.py','client/install.sh','client/nodehub-init.service','client/enable-overlayroot.example.sh','client/readonly-runtime.py'}
     if manifest['terminal_enabled']:
         required.update({'agent/install.sh','agent/config.example.json','agent/nodehub-agent.service','bin/nodehub-agent-linux-' + arch})
     if not required.issubset(files): raise RuntimeError('The center bootstrap package is incomplete')
@@ -229,6 +229,7 @@ def main():
             path = folder / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(content)
         run(['bash', str(folder / 'client/install.sh')])
         install_file(folder / 'client/mesh-install.py', '/usr/local/lib/nodehub/mesh-install', 0o700)
+        install_file(folder / 'client/readonly-runtime.py', '/usr/local/lib/nodehub/readonly-runtime', 0o700)
         install_file(folder / 'client/enable-overlayroot.example.sh', '/usr/local/lib/nodehub/enable-overlayroot', 0o700)
         import importlib.util
         spec = importlib.util.spec_from_file_location('nodehub_init', folder / 'client/nodehub-init.py')

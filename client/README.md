@@ -84,3 +84,5 @@ systemctl daemon-reload
 Do not start initialization or enroll the template. Confirm no generated identities remain, then shut down and clone. Every clone receives `--agent-config` through the same service override. Activation and MeshAgent settings are still required.
 
 If not using native terminals, omit the drop-in. For old deployments, upgrade the center and initializer first, then retry with original state. Check the effective ExecStart and verify `id -un` returns root before finalizing. Finalization removes the provided `agent.conf` along with the first-boot entrypoint.
+
+[Read-only runtime directories](../docs/readonly-runtime.md)
