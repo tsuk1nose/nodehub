@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """HTTPS bootstrap for Debian nodes; tokens are entered locally, never in arguments."""
 import argparse
+import base64
+import shutil
 import getpass
 import fcntl
 import warnings
@@ -82,12 +84,60 @@ def require_clean_template():
         raise RuntimeError('Template machine-id must be a regular file')
     # Never silently erase an enrolled device, including persistent /data state.
     for name in ('/var/lib/nodehub-init/state.json', '/var/lib/nodehub-agent/identity.json',
-                 '/var/lib/tailscale/tailscaled.state', '/var/lib/nodehub-mesh/install.json',
+                 '/var/lib/nodehub-mesh/install.json',
                  '/data/nodehub/meshagent', '/usr/local/mesh_services/meshagent'):
         if Path(name).exists():
             raise RuntimeError('Template contains service state: ' + name + '; use an unregistered template')
+    require_unregistered_tailscale()
     if Path('/var/lib/cloud').exists():
         raise RuntimeError('This template contains cloud-init state; prepare it separately before sealing')
+
+def check_tailscale_store():
+    state_file = Path('/var/lib/tailscale/tailscaled.state')
+    if not state_file.exists():
+        return
+    try:
+        state = json.loads(state_file.read_text())
+        if not isinstance(state, dict):
+            raise ValueError()
+        # FileStore values are base64 encoded byte strings. A fresh daemon may
+        # already have a machine key, but must not have saved login profiles.
+        for key, value in state.items():
+            if key == '_machinekey':
+                continue
+            decoded = base64.b64decode(value, validate=True)
+            if key == '_profiles' and json.loads(decoded) in (None, [], {}):
+                continue
+            if key == '_current-profile' and decoded in (b'', b'null', b'""'):
+                continue
+            raise RuntimeError('Tailscale has saved login state; use an unregistered template')
+    except (ValueError, TypeError):
+        raise RuntimeError('Cannot verify Tailscale state; refusing to seal') from None
+
+def require_unregistered_tailscale():
+    directory = Path('/var/lib/tailscale')
+    if directory.is_symlink() or Path('/var/lib/tailscale/tailscaled.state').is_symlink():
+        raise RuntimeError('Tailscale template state must not be a symbolic link')
+    if not Path('/var/lib/tailscale/tailscaled.state').exists():
+        return
+    result = subprocess.run(['tailscale', 'status', '--json'], capture_output=True, text=True, timeout=20)
+    try:
+        status = json.loads(result.stdout)
+    except (ValueError, TypeError):
+        raise RuntimeError('Cannot verify Tailscale login status; start tailscaled and retry') from None
+    if result.returncode or status.get('BackendState') != 'NeedsLogin' or status.get('TailscaleIPs') or status.get('CurrentTailnet'):
+        raise RuntimeError('Tailscale is enrolled or not ready for sealing; use an unregistered template')
+    check_tailscale_store()
+
+def clean_template_tailscale():
+    require_unregistered_tailscale()
+    # Stop the writer before removing even an unregistered machine key/log ID.
+    run(['systemctl', 'stop', 'tailscaled.service'])
+    check_tailscale_store()
+    directory = Path('/var/lib/tailscale')
+    if directory.exists():
+        shutil.rmtree(directory)
+    # Leave tailscaled stopped until the cloned machine boots.
 
 def seal_template(initializer):
     # This unit runs on each boot but only generates missing keys. It also covers
@@ -108,6 +158,7 @@ WantedBy=multi-user.target
     initializer.atomic_write('/etc/systemd/system/nodehub-host-keys.service', unit, 0o644)
     run(['systemctl', 'daemon-reload'])
     run(['systemctl', 'enable', 'nodehub-host-keys.service'])
+    clean_template_tailscale()
     # Do not regenerate keys or restart SSH on the source template.
     for key in Path('/etc/ssh').glob('ssh_host_*'):
         if re.fullmatch(r'ssh_host_[a-z0-9]+_key(?:\.pub)?', key.name):
@@ -211,6 +262,6 @@ def main():
 
 if __name__ == '__main__':
     try: main()
-    except (RuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+    except (RuntimeError, OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
         print('Bootstrap incomplete: ' + str(error), file=sys.stderr)
         sys.exit(1)

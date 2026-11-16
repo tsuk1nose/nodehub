@@ -58,7 +58,7 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
   --server 'https://hub.example.com' --prepare-image
 ```
 
-This enables the first-boot unit without starting it. It requires the actual `/data` disk mounted and refuses existing Node Hub, native Agent, Tailscale, MeshAgent or cloud-init state. After installation it removes SSH host keys, empties machine-id, links the D-Bus machine-id to it, and powers off. A persistent host-key unit generates missing keys before SSH starts on clones; existing keys are preserved. Do not use a registered production node.
+This enables the first-boot unit without starting it. It requires the actual `/data` disk mounted and refuses existing Node Hub, native Agent, MeshAgent or cloud-init state. Fresh Tailscale daemon state is allowed only when status is `NeedsLogin` and the state store has no saved login profiles. Sealing stops tailscaled and clears its state directory, including its unregistered machine key and log identity. Enrolled, stopped-but-enrolled, unverifiable or unknown state is refused. After installation it removes SSH host keys, empties machine-id, links the D-Bus machine-id to it, and powers off. A persistent host-key unit generates missing keys before SSH starts on clones; existing keys are preserved. Do not use a registered production node.
 
 Prepare DHCP networking without fixed IPs, old MAC bindings or fixed DHCP Client-ID/DUID values; network configuration is not automatically rewritten. Capture the powered-off template without booting it again. Give each clone its own MAC and, for VMs, its own VM UUID. First boot persists identities before enabling OverlayFS.
 

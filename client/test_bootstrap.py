@@ -8,6 +8,8 @@ import hashlib
 from unittest.mock import Mock
 import getpass
 import tempfile
+import json
+import base64
 
 spec = importlib.util.spec_from_file_location('nodehub_bootstrap', Path(__file__).with_name('bootstrap.py'))
 bootstrap = importlib.util.module_from_spec(spec)
@@ -45,7 +47,7 @@ class BootstrapTests(unittest.TestCase):
         with patch.object(bootstrap.os.path, 'ismount', return_value=False):
             with self.assertRaisesRegex(RuntimeError, 'Mount'):
                 bootstrap.require_clean_template()
-        for existing in ('/var/lib/tailscale/tailscaled.state', '/data/nodehub/meshagent',
+        for existing in ('/data/nodehub/meshagent',
                          '/var/lib/nodehub-agent/identity.json', '/var/lib/cloud'):
             with tempfile.TemporaryDirectory() as folder:
                 root = Path(folder)
@@ -56,6 +58,40 @@ class BootstrapTests(unittest.TestCase):
                 with patch.object(bootstrap.os.path, 'ismount', return_value=True), patch.object(bootstrap, 'Path', side_effect=local):
                     with self.assertRaisesRegex(RuntimeError, 'state'):
                         bootstrap.require_clean_template()
+
+    def test_fresh_tailscale_state_can_be_cleaned_after_stopping(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            def local(value): return root / str(value).lstrip('/')
+            state = local('/var/lib/tailscale/tailscaled.state')
+            state.parent.mkdir(parents=True)
+            state.write_text(json.dumps({'_machinekey': 'private', '_profiles': base64.b64encode(b'[]').decode()}))
+            commands = []
+            status = Mock(returncode=0, stdout=json.dumps({'BackendState': 'NeedsLogin', 'TailscaleIPs': []}))
+            with patch.object(bootstrap, 'Path', side_effect=local), patch.object(bootstrap.subprocess, 'run', return_value=status), patch.object(bootstrap, 'run', side_effect=commands.append):
+                bootstrap.require_unregistered_tailscale()
+                self.assertTrue(state.exists())
+                bootstrap.clean_template_tailscale()
+            self.assertEqual(commands, [['systemctl', 'stop', 'tailscaled.service']])
+            self.assertFalse(state.parent.exists())
+
+    def test_logged_out_profiles_and_enrolled_tailscale_are_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            def local(value): return root / str(value).lstrip('/')
+            state = local('/var/lib/tailscale/tailscaled.state')
+            state.parent.mkdir(parents=True)
+            state.write_text(json.dumps({'_profiles': base64.b64encode(b'[{"ID":"old"}]').decode()}))
+            for backend in ('Running', 'Stopped', 'NeedsMachineAuth', 'NeedsLogin'):
+                status = Mock(returncode=0, stdout=json.dumps({'BackendState': backend}))
+                with patch.object(bootstrap, 'Path', side_effect=local), patch.object(bootstrap.subprocess, 'run', return_value=status):
+                    with self.assertRaises(RuntimeError):
+                        bootstrap.require_unregistered_tailscale()
+                self.assertTrue(state.exists())
+            state.write_text('invalid')
+            with patch.object(bootstrap, 'Path', side_effect=local):
+                with self.assertRaisesRegex(RuntimeError, 'Cannot verify'):
+                    bootstrap.check_tailscale_store()
 
     def test_https_center_and_no_credentials(self):
         self.assertEqual(bootstrap.center_url('https://hub.example.com/'), 'https://hub.example.com')

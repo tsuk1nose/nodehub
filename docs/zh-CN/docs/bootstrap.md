@@ -50,7 +50,7 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
   --server 'https://hub.example.com' --prepare-image
 ```
 
-该选项启用首次启动服务但不启动。封装前要求挂载实际 `/data`，并拒绝已有 NodeHub、原生 Agent、Tailscale 或 MeshAgent 状态及 cloud-init 缓存。安装完成后删除 SSH 主机密钥、清空 machine-id、将 D-Bus machine-id 链接到系统文件，然后自动关机。新增的主机密钥服务在克隆机 SSH 服务启动前补齐缺失密钥；已有密钥不会轮换。该选项不能用于直接克隆已登记生产节点。
+该选项启用首次启动服务但不启动。封装前要求挂载实际 `/data`，并拒绝已有 NodeHub、原生 Agent、MeshAgent 身份及 cloud-init 缓存。Tailscale 允许存在未登录守护进程自动生成的状态，但必须为 `NeedsLogin` 且没有保存的登录配置；封装时停止 tailscaled 并清理其状态目录，避免复制机器密钥与日志身份。已登记、停止但保留登记信息、无法确认或未知格式的状态仍拒绝封装。安装完成后删除 SSH 主机密钥、清空 machine-id、将 D-Bus machine-id 链接到系统文件，然后自动关机。新增的主机密钥服务在克隆机 SSH 服务启动前补齐缺失密钥；已有密钥不会轮换。该选项不能用于直接克隆已登记生产节点。
 
 模板必须预先配置适合目标节点的 DHCP 网络，不得携带固定 IP、旧 MAC 绑定或固定 DHCP Client-ID/DUID；本流程不会盲目改写网络配置。封装后在关机状态制作镜像，勿再次启动源模板。各克隆机必须具有独立 MAC（虚拟机还需独立的虚拟机 UUID）。首次启动在可持久写入的根目录生成身份，完成登记后才启用 OverlayFS。
 
