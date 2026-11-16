@@ -15,10 +15,29 @@ class RuntimePolicyTest(unittest.TestCase):
             runtime.mount_state()
         self.assertEqual(run.call_count, 1)
 
-    def test_missing_identity_blocks_mount(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(runtime, 'STATE', Path(folder)), patch.object(runtime, 'run', return_value='overlay') as run:
-            with self.assertRaisesRegex(RuntimeError, 'identity'): runtime.mount_state()
-            self.assertEqual(run.call_count, 1)
+    def test_missing_identity_allows_mount(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder) / 'state'; state.mkdir()
+            ram = Path(folder) / 'ram'
+            with patch.object(runtime, 'STATE', state), patch.object(runtime, 'RUNTIME', ram), patch.object(runtime.os.path, 'ismount', return_value=False), patch.object(runtime, 'run', return_value='overlay') as run:
+                runtime.mount_state()
+            self.assertEqual(run.call_args.args[-2:], ('nodehub-network-state', str(state)))
+            self.assertFalse((state / 'secret_key').exists())
+
+    def test_invalid_state_directory_is_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            file = root / 'file'; file.touch()
+            link = root / 'link'; link.symlink_to(root / 'missing')
+            for state in (file, link):
+                with patch.object(runtime, 'STATE', state), patch.object(runtime, 'write_owned'), patch.object(runtime, 'run', return_value='overlay'):
+                    with self.assertRaisesRegex(RuntimeError, 'directory'): runtime.install()
+                    with self.assertRaisesRegex(RuntimeError, 'directory'): runtime.mount_state()
+
+    def test_unexpected_existing_mount_is_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(runtime, 'STATE', Path(folder)), patch.object(runtime.os.path, 'ismount', return_value=True), patch.object(runtime, 'run', side_effect=['overlay', 'unexpected']):
+                with self.assertRaisesRegex(RuntimeError, 'Unexpected mount'): runtime.mount_state()
 
     def test_mount_policy_preserves_lower_and_bounds_upper(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -35,7 +54,7 @@ class RuntimePolicyTest(unittest.TestCase):
 
     def test_install_requires_mount_before_networkmanager(self):
         with tempfile.TemporaryDirectory() as folder:
-            state=Path(folder); (state/'secret_key').write_text('identity')
+            state=Path(folder)  # Finalization must also work without secret_key.
             with patch.object(runtime, 'STATE', state), patch.object(runtime, 'write_owned') as write:
                 runtime.install()
             configs = dict(call.args for call in write.call_args_list)

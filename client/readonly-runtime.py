@@ -30,8 +30,6 @@ def mount_state():
         return
     if STATE.is_symlink() or not STATE.is_dir():
         raise RuntimeError('NetworkManager state must be an existing directory')
-    if (STATE / 'secret_key').is_symlink() or not (STATE / 'secret_key').is_file():
-        raise RuntimeError('Initialize NetworkManager identity before sealing the node')
     if os.path.ismount(STATE):
         if run('findmnt', '-n', '-o', 'SOURCE', '--target', str(STATE)) != 'nodehub-network-state':
             raise RuntimeError('Unexpected mount on NetworkManager state')
@@ -53,10 +51,14 @@ def mount_state():
 def install():
     write_owned('/etc/systemd/journald.conf.d/60-nodehub-volatile.conf',
                 '[Journal]\nStorage=volatile\nRuntimeMaxUse=64M\nRuntimeKeepFree=32M\n')
+    if STATE.is_symlink():
+        raise RuntimeError('NetworkManager state must be an existing directory')
     if not STATE.exists():
         return  # Systems without NetworkManager only need the logging policy.
-    if STATE.is_symlink() or (STATE / 'secret_key').is_symlink() or not (STATE / 'secret_key').is_file():
-        raise RuntimeError('NetworkManager must establish its identity on the cloned node before finalization')
+    if not STATE.is_dir():
+        raise RuntimeError('NetworkManager state must be an existing directory')
+    # A missing secret_key is allowed; NetworkManager manages its own state.
+    # Any identity first created in the RAM upper layer may change after reboot.
     write_owned('/etc/systemd/system/nodehub-network-state.service', '''[Unit]
 Description=Bounded volatile NetworkManager state
 DefaultDependencies=no
