@@ -74,10 +74,58 @@ def prompt_token():
     except (OSError, getpass.GetPassWarning):
         raise RuntimeError('An interactive terminal with hidden input is required') from None
 
+def require_clean_template():
+    # Inspect the actual persistent data disk, never a hidden mountpoint.
+    if not os.path.ismount('/data'):
+        raise RuntimeError('Mount the template /data disk before sealing')
+    if Path('/etc/machine-id').is_symlink():
+        raise RuntimeError('Template machine-id must be a regular file')
+    # Never silently erase an enrolled device, including persistent /data state.
+    for name in ('/var/lib/nodehub-init/state.json', '/var/lib/nodehub-agent/identity.json',
+                 '/var/lib/tailscale/tailscaled.state', '/var/lib/nodehub-mesh/install.json',
+                 '/data/nodehub/meshagent', '/usr/local/mesh_services/meshagent'):
+        if Path(name).exists():
+            raise RuntimeError('Template contains service state: ' + name + '; use an unregistered template')
+    if Path('/var/lib/cloud').exists():
+        raise RuntimeError('This template contains cloud-init state; prepare it separately before sealing')
+
+def seal_template(initializer):
+    # This unit runs on each boot but only generates missing keys. It also covers
+    # installations without the optional native terminal/SSH provisioner.
+    unit = """[Unit]
+Description=Generate missing SSH host keys on cloned nodes
+After=local-fs.target
+Before=ssh.service nodehub-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+"""
+    initializer.atomic_write('/etc/systemd/system/nodehub-host-keys.service', unit, 0o644)
+    run(['systemctl', 'daemon-reload'])
+    run(['systemctl', 'enable', 'nodehub-host-keys.service'])
+    # Do not regenerate keys or restart SSH on the source template.
+    for key in Path('/etc/ssh').glob('ssh_host_*'):
+        if re.fullmatch(r'ssh_host_[a-z0-9]+_key(?:\.pub)?', key.name):
+            key.unlink()
+    dbus = Path('/var/lib/dbus/machine-id')
+    dbus.unlink(missing_ok=True)
+    if dbus.parent.exists():
+        dbus.symlink_to('/etc/machine-id')
+    Path('/etc/machine-id').write_text('')
+    run(['sync'])
+    print('Template sealed. Powering off: capture the image while powered off. '
+          'Booting this source again consumes its template state.')
+    run(['systemctl', 'poweroff'])
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', required=True)
-    parser.add_argument('--prepare-image', action='store_true', help='Save the batch token and install first-boot tools without enrolling the template')
+    parser.add_argument('--prepare-image', action='store_true', help='Install, seal an unregistered template, and power it off for cloning')
     args = parser.parse_args()
     if os.geteuid() != 0: raise RuntimeError('Run as root')
     os.umask(0o077)
@@ -100,6 +148,8 @@ def main():
     if state and state.get('server') != server: raise RuntimeError('Existing node state belongs to another center; do not overwrite it')
     if args.prepare_image and (state or Path('/var/lib/nodehub-agent/identity.json').exists()):
         raise RuntimeError('The template already has a node identity; do not clone it')
+    if args.prepare_image:
+        require_clean_template()
     agent_identity = Path('/var/lib/nodehub-agent/identity.json')
     if agent_identity.exists():
         identity = json.loads(agent_identity.read_text())
@@ -153,7 +203,7 @@ def main():
             initializer.atomic_json('/etc/nodehub/activation.json', {'server': server, 'token': token})
             token = None
         if args.prepare_image:
-            print('Batch token saved with root-only permissions. Shut down and clone; first boot will enroll, clean up, enable root overlay, and reboot.')
+            seal_template(initializer)
             return
         # Keep terminal output visible, but never print token values or command credentials.
         result = subprocess.run(command.split())

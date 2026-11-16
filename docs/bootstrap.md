@@ -50,7 +50,7 @@ The authenticated node asks the center to associate the unique serial match in t
 
 ## 4. Prepare an unregistered image
 
-The same command can install tools while prompting for and saving a batch token without enrolling:
+The same command installs tools, saves a batch token, seals the template, and powers it off without enrolling:
 
 ```sh
 curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
@@ -58,9 +58,11 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
   --server 'https://hub.example.com' --prepare-image
 ```
 
-This enables the first-boot unit but does not start it. It refuses an existing Node Hub/Agent identity. You must still seal machine-id, SSH, Tailscale, and MeshAgent identities correctly; this option does not erase or sanitize a previously registered production node.
+This enables the first-boot unit without starting it. It requires the actual `/data` disk mounted and refuses existing Node Hub, native Agent, Tailscale, MeshAgent or cloud-init state. After installation it removes SSH host keys, empties machine-id, links the D-Bus machine-id to it, and powers off. A persistent host-key unit generates missing keys before SSH starts on clones; existing keys are preserved. Do not use a registered production node.
 
-The batch token is saved to `/etc/nodehub/activation.json` (root, mode 600). Choose a reusable token with enough uses and lifetime; unlimited uses/expiry are supported. Shut down and clone without starting enrollment on the template. Each clone creates its own serial and credentials, removes its activation file after independent authentication, and resumes automatically after transient failures. The template token remains in the source image until you replace that image or revoke the token centrally. Successful setup removes the first-boot unit/overrides, initializer, Mesh installation helper/settings/downloads, and initializer state, then reboots. Native Agent, Tailscale, MeshAgent, SSH and their identities are preserved, including the complete MeshAgent directory on `/data`. The center remains `awaiting_overlay` until boot acceptance; cleanup does not claim a verified reboot.
+Prepare DHCP networking without fixed IPs, old MAC bindings or fixed DHCP Client-ID/DUID values; network configuration is not automatically rewritten. Capture the powered-off template without booting it again. Give each clone its own MAC and, for VMs, its own VM UUID. First boot persists identities before enabling OverlayFS.
+
+The batch token is saved to `/etc/nodehub/activation.json` (root, mode 600). Choose a reusable token with enough uses and lifetime; unlimited uses/expiry are supported. The installer powers off; capture and clone without booting the template again. Each clone creates its own serial and credentials, removes its activation file after independent authentication, and resumes automatically after transient failures. The template token remains in the source image until you replace that image or revoke the token centrally. Successful setup removes the first-boot unit/overrides, initializer, Mesh installation helper/settings/downloads, and initializer state, then reboots. Native Agent, Tailscale, MeshAgent, SSH and their identities are preserved, including the complete MeshAgent directory on `/data`. The center remains `awaiting_overlay` until boot acceptance; cleanup does not claim a verified reboot.
 
 ## 5. Testing boundaries
 

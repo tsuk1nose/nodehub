@@ -9,7 +9,7 @@ The initializer supports recoverable registration and Tailscale enrollment, a ve
 ## Prepare the template
 
 1. Install Python 3, CA certificates, Tailscale, systemd, networking, and correct time. For native terminals, also install OpenSSH server and the Agent.
-2. Seal machine-id/SSH identity according to your Debian image process. Do not retain registered Tailscale/MeshAgent identities. Complete multi-clone acceptance remains pending; do not clone a production node's state.
+2. The HTTPS `--prepare-image` path seals machine-id/SSH identity and powers off automatically; for manual installation, seal these according to your Debian image process. Do not retain registered Tailscale/MeshAgent identities. Complete multi-clone acceptance remains pending; do not clone a production node's state.
 3. As root, run `client/install.sh`. It enables but does not start the first-boot service.
 4. Install root-owned, mode-600 `/etc/nodehub/activation.json` from the example. A center-issued unlimited token may be reused across a batch of images.
 5. Provide executable, root-owned `/usr/local/lib/nodehub/mesh-install`, not writable by others. It receives `NODEHUB_SERIAL`, must be retry-safe, and must not expose management credentials in output/arguments.

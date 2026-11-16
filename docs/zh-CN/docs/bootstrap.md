@@ -42,7 +42,7 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
 
 ## 制作未登记模板
 
-增加 `--prepare-image` 会隐藏输入并保存批量令牌，只安装工具、不登记、不启动：
+增加 `--prepare-image` 会隐藏输入并保存批量令牌，安装工具、封装清理并自动关机，不在模板上登记：
 
 ```sh
 curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
@@ -50,9 +50,11 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
   --server 'https://hub.example.com' --prepare-image
 ```
 
-该选项启用首次启动服务但不启动，并拒绝已有 NodeHub/Agent 身份。它不会替你清理已登记的 Tailscale、MeshAgent、machine-id 或 SSH 身份，不能用来直接克隆生产节点。
+该选项启用首次启动服务但不启动。封装前要求挂载实际 `/data`，并拒绝已有 NodeHub、原生 Agent、Tailscale 或 MeshAgent 状态及 cloud-init 缓存。安装完成后删除 SSH 主机密钥、清空 machine-id、将 D-Bus machine-id 链接到系统文件，然后自动关机。新增的主机密钥服务在克隆机 SSH 服务启动前补齐缺失密钥；已有密钥不会轮换。该选项不能用于直接克隆已登记生产节点。
 
-批量令牌保存在 root 拥有、mode 600 的 `/etc/nodehub/activation.json`。选择足够次数和期限的可重复使用令牌；支持无限期无限次。随后关机制作镜像，不在模板上启动登记。克隆机首次启动自动取得独立序列号和凭据，认证恢复成功后删除本机批量令牌；暂时失败可恢复重试。源镜像中的令牌不会因某台克隆机删除而消失，需更新镜像或在中心吊销。成功后自动删除初始化服务及覆盖配置、初始化程序、Mesh 安装辅助程序/设置/下载缓存、初始化状态和凭据；保留各常驻服务及其默认目录下身份。中心保持 awaiting_overlay，重启效果仍需拉通验收。
+模板必须预先配置适合目标节点的 DHCP 网络，不得携带固定 IP、旧 MAC 绑定或固定 DHCP Client-ID/DUID；本流程不会盲目改写网络配置。封装后在关机状态制作镜像，勿再次启动源模板。各克隆机必须具有独立 MAC（虚拟机还需独立的虚拟机 UUID）。首次启动在可持久写入的根目录生成身份，完成登记后才启用 OverlayFS。
+
+批量令牌保存在 root 拥有、mode 600 的 `/etc/nodehub/activation.json`。选择足够次数和期限的可重复使用令牌；支持无限期无限次。安装器会自动关机，随后制作镜像，不在模板上启动登记。克隆机首次启动自动取得独立序列号和凭据，认证恢复成功后删除本机批量令牌；暂时失败可恢复重试。源镜像中的令牌不会因某台克隆机删除而消失，需更新镜像或在中心吊销。成功后自动删除初始化服务及覆盖配置、初始化程序、Mesh 安装辅助程序/设置/下载缓存、初始化状态和凭据；保留各常驻服务及其默认目录下身份。中心保持 awaiting_overlay，重启效果仍需拉通验收。
 
 ## 验证边界
 

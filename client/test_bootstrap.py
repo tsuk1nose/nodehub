@@ -7,12 +7,56 @@ import io
 import hashlib
 from unittest.mock import Mock
 import getpass
+import tempfile
 
 spec = importlib.util.spec_from_file_location('nodehub_bootstrap', Path(__file__).with_name('bootstrap.py'))
 bootstrap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bootstrap)
 
 class BootstrapTests(unittest.TestCase):
+    def test_sealing_removes_only_host_keys_and_powers_off_last(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            def local(value):
+                return root / str(value).lstrip('/')
+            for name in ('/etc/ssh/ssh_host_ed25519_key', '/etc/ssh/ssh_host_ed25519_key.pub',
+                         '/etc/ssh/sshd_config', '/etc/ssh/ssh_host_custom_config',
+                         '/etc/machine-id', '/var/lib/dbus/machine-id'):
+                path = local(name)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('source identity')
+            initializer = Mock()
+            commands = []
+            with patch.object(bootstrap, 'Path', side_effect=local), patch.object(bootstrap, 'run', side_effect=commands.append):
+                bootstrap.seal_template(initializer)
+            self.assertFalse(local('/etc/ssh/ssh_host_ed25519_key').exists())
+            self.assertFalse(local('/etc/ssh/ssh_host_ed25519_key.pub').exists())
+            self.assertEqual(local('/etc/ssh/sshd_config').read_text(), 'source identity')
+            self.assertTrue(local('/etc/ssh/ssh_host_custom_config').exists())
+            self.assertEqual(local('/etc/machine-id').read_text(), '')
+            self.assertEqual(local('/var/lib/dbus/machine-id').readlink(), Path('/etc/machine-id'))
+            self.assertEqual(commands[-2:], [['sync'], ['systemctl', 'poweroff']])
+            unit = initializer.atomic_write.call_args.args[1]
+            self.assertIn('Before=ssh.service nodehub-init.service', unit)
+            self.assertIn('ExecStart=/usr/bin/ssh-keygen -A', unit)
+            self.assertNotIn(['ssh-keygen', '-A'], commands)
+
+    def test_template_preflight_rejects_persistent_identities_and_unmounted_data(self):
+        with patch.object(bootstrap.os.path, 'ismount', return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'Mount'):
+                bootstrap.require_clean_template()
+        for existing in ('/var/lib/tailscale/tailscaled.state', '/data/nodehub/meshagent',
+                         '/var/lib/nodehub-agent/identity.json', '/var/lib/cloud'):
+            with tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                def local(value): return root / str(value).lstrip('/')
+                path = local(existing)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+                with patch.object(bootstrap.os.path, 'ismount', return_value=True), patch.object(bootstrap, 'Path', side_effect=local):
+                    with self.assertRaisesRegex(RuntimeError, 'state'):
+                        bootstrap.require_clean_template()
+
     def test_https_center_and_no_credentials(self):
         self.assertEqual(bootstrap.center_url('https://hub.example.com/'), 'https://hub.example.com')
         for value in ['http://hub.example.com', 'https://user:password@hub.example.com', 'https://hub.example.com/?token=secret', 'https://hub.example.com/#secret']:
