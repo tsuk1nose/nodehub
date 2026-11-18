@@ -30,7 +30,7 @@ import (
 	"nodehub/internal/wire"
 )
 
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 type Config struct {
 	Server              string `json:"server"`
@@ -69,8 +69,9 @@ func LoadConfig(path string) (Config, error) {
 	if d.Decode(new(any)) != io.EOF {
 		return c, errors.New("configuration must contain one JSON object")
 	}
-	if c.SSHPort == 0 {
-		c.SSHPort = 22
+	// The old generated default was 22. Treat it as automatic discovery too.
+	if c.SSHPort == 22 {
+		c.SSHPort = 0
 	}
 	if c.HeartbeatSeconds == 0 {
 		c.HeartbeatSeconds = 30
@@ -81,7 +82,7 @@ func LoadConfig(path string) (Config, error) {
 	if c.MaxSessions == 0 {
 		c.MaxSessions = 2
 	}
-	if c.SSHPort < 1 || c.SSHPort > 65535 || c.HeartbeatSeconds < 1 || c.HeartbeatSeconds > 300 || c.ReconnectMaxSeconds < 1 || c.ReconnectMaxSeconds > 3600 || c.MaxSessions < 1 || c.MaxSessions > 32 || c.IdentityFile == "" {
+	if c.SSHPort < 0 || c.SSHPort > 65535 || c.HeartbeatSeconds < 1 || c.HeartbeatSeconds > 300 || c.ReconnectMaxSeconds < 1 || c.ReconnectMaxSeconds > 3600 || c.MaxSessions < 1 || c.MaxSessions > 32 || c.IdentityFile == "" {
 		return c, errors.New("invalid agent limits or identity path")
 	}
 	u, e := url.Parse(c.Server)
@@ -385,12 +386,34 @@ func (a *Agent) relay(ctx context.Context, m wire.Message) {
 	stop := context.AfterFunc(ctx, func() { _ = c.Close() })
 	defer stop()
 	_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	if e = c.WriteJSON(wire.Message{Type: "data", Serial: a.id.Serial, Session: m.Session, Token: m.Token}); e != nil {
-		return
+	discovery, cancel := context.WithTimeout(ctx, 5*time.Second)
+	endpoint, discoverErr := sshEndpoint(discovery, a.cfg.SSHPort)
+	cancel()
+	code := ""
+	var local net.Conn
+	if discoverErr != nil {
+		slog.Warn("local SSH endpoint discovery failed", "error", discoverErr)
+		code = "ssh_endpoint_unavailable"
+	} else {
+		d := net.Dialer{Timeout: 5 * time.Second}
+		local, e = d.DialContext(ctx, "tcp", endpoint)
+		if e != nil {
+			code = "ssh_connection_failed"
+			var timeout net.Error
+			if errors.As(e, &timeout) && timeout.Timeout() {
+				code = "ssh_connection_timeout"
+			}
+			if errors.Is(e, syscall.ECONNREFUSED) {
+				code = "ssh_connection_refused"
+			}
+		}
 	}
-	d := net.Dialer{Timeout: 5 * time.Second}
-	local, e := d.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(a.cfg.SSHPort)))
-	if e != nil {
+	// Report a bounded, non-sensitive error before the server starts SSH framing.
+	_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if e = c.WriteJSON(wire.Message{Type: "data", Serial: a.id.Serial, Session: m.Session, Token: m.Token, Error: code, Address: endpoint}); e != nil || code != "" {
+		if local != nil {
+			_ = local.Close()
+		}
 		return
 	}
 	defer local.Close()

@@ -15,6 +15,8 @@ const Version = "nodehub-agent-v1"
 const MaxChunk = 16 * 1024
 
 type Message struct {
+	Error     string `json:"error,omitempty"`
+	Address   string `json:"address,omitempty"`
 	Type      string `json:"type"`
 	Serial    string `json:"serial,omitempty"`
 	Challenge string `json:"challenge,omitempty"`

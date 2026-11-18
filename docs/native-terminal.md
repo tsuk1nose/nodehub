@@ -19,7 +19,7 @@ Browser xterm.js -- authorized WebSocket -- Node Hub SSH client
                                                  |
                                          unprivileged Agent
                                                  |
-                                           127.0.0.1:22
+                                           loopback:<detected SSH port>
                                                  |
                                           existing SSHD
                                                  |
@@ -163,3 +163,9 @@ Real Debian 13 / N2840 tests passed for automatic root migration/provisioning, r
 The earlier dependency scan reported zero reachable vulnerabilities after updating SSH dependencies, with one unused module-only finding; this is not a full security audit. amd64/arm64 Agent binaries have been built.
 
 Production Docker runtime, Dropbear, full clone/OverlayFS reboot behavior, long network disruptions, and sustained resource/throughput/capacity measurements remain pending. One device's roughly 6 MiB service memory is not a capacity guarantee. No shell migration/resumption after connection loss is provided.
+
+## Local SSH endpoint discovery
+
+Agent 0.3.0 detects the endpoint on each terminal session. `ssh_port: 0` (and the old generated default 22) uses active `ssh.socket` stream listeners, otherwise `/usr/sbin/sshd -G` effective listen addresses, checked against `ss -H -ltn`. IPv4 and IPv6 loopback are supported. It never scans unrelated ports or relaxes host-key pinning. Keep SSH configuration readable by the non-root Agent, and install iproute2 (`ss`). sshd command-line overrides/custom service names are not inferred; an existing explicit non-default `ssh_port` is still supported. A port configured only on a non-loopback interface cannot be relayed by this mechanism.
+
+Connection refusal, connection timeout, endpoint detection failure, authentication failure, pinned host-key mismatch, and other handshake failures have separate messages. Update both center and Agent to use the new diagnostics. The Agent remains non-root; configuration detection does not require access to host private keys.

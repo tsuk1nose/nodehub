@@ -94,6 +94,8 @@ type session struct {
 	once                             sync.Once
 	mu                               sync.Mutex
 	tunnel                           net.Conn
+	localError                       string
+	localAddress                     string
 	browser                          *websocket.Conn
 	sshCloser                        interface{ Close() error }
 	target                           Target
@@ -419,7 +421,7 @@ func (g *Gateway) Data(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	c.SetReadLimit(4096)
-	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = c.SetReadDeadline(time.Now().Add(15 * time.Second))
 	var m wire.Message
 	if e = c.ReadJSON(&m); e != nil || m.Type != "data" || len(m.Token) != 64 {
 		return
@@ -444,6 +446,13 @@ func (g *Gateway) Data(w http.ResponseWriter, r *http.Request) {
 	s.consumed = true
 	s.token = [32]byte{}
 	_ = c.SetReadDeadline(time.Now().Add(15 * time.Second))
+	switch m.Error {
+	case "", "ssh_endpoint_unavailable", "ssh_connection_refused", "ssh_connection_timeout", "ssh_connection_failed":
+		s.localError = m.Error
+	default:
+		s.localError = "ssh_connection_failed"
+	}
+	s.localAddress = m.Address
 	s.tunnel = wire.NewConn(c)
 	close(s.ready)
 	keep = true

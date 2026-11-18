@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -97,14 +99,30 @@ func (g *Gateway) Browser(w http.ResponseWriter, r *http.Request, id, owner stri
 	}
 	s.mu.Lock()
 	tunnel := s.tunnel
+	localError, address := s.localError, s.localAddress
 	s.mu.Unlock()
+	if localError != "" {
+		reason = localError
+		s.status(localSSHError(localError))
+		return
+	}
+	if address == "" {
+		address = "local SSH endpoint"
+	}
 	target := s.target
-	cfg := &ssh.ClientConfig{User: target.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(target.Signer)}, HostKeyCallback: ssh.FixedHostKey(target.HostKey), HostKeyAlgorithms: hostKeyAlgorithms(target.HostKey), Timeout: 15 * time.Second}
-	cc, ch, requests, e := ssh.NewClientConn(tunnel, "127.0.0.1:22", cfg)
+	hostKeyMismatch := false
+	verifyHost := ssh.FixedHostKey(target.HostKey)
+	cfg := &ssh.ClientConfig{User: target.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(target.Signer)}, HostKeyCallback: func(host string, addr net.Addr, key ssh.PublicKey) error {
+		err := verifyHost(host, addr, key)
+		hostKeyMismatch = err != nil
+		return err
+	}, HostKeyAlgorithms: hostKeyAlgorithms(target.HostKey), Timeout: 15 * time.Second}
+	cc, ch, requests, e := ssh.NewClientConn(tunnel, address, cfg)
 	if e != nil {
 		slog.Warn("terminal SSH handshake failed", "serial", s.serial, "error", e)
-		s.status("SSH authentication or host key verification failed; check the configuration")
-		reason = "ssh_handshake_failed"
+		var message string
+		reason, message = classifySSHError(e, hostKeyMismatch)
+		s.status(message)
 		return
 	}
 	_ = tunnel.SetReadDeadline(time.Now().Add(15 * time.Second))
@@ -285,4 +303,31 @@ func hostKeyAlgorithms(key ssh.PublicKey) []string {
 		return []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256}
 	}
 	return []string{key.Type()}
+}
+
+func localSSHError(code string) string {
+	switch code {
+	case "ssh_endpoint_unavailable":
+		return "Cannot determine a listening local SSH endpoint; check sshd or ssh.socket"
+	case "ssh_connection_refused":
+		return "Local SSH connection refused; check the SSH listener"
+	case "ssh_connection_timeout":
+		return "Local SSH connection timed out"
+	default:
+		return "Local SSH connection failed"
+	}
+}
+
+func classifySSHError(err error, hostKeyMismatch bool) (string, string) {
+	if hostKeyMismatch {
+		return "ssh_host_key_mismatch", "SSH host key does not match the registered key"
+	}
+	if strings.Contains(err.Error(), "unable to authenticate") {
+		return "ssh_authentication_failed", "SSH login authentication failed; check the authorized key and login policy"
+	}
+	var timeout net.Error
+	if errors.As(err, &timeout) && timeout.Timeout() {
+		return "ssh_handshake_timeout", "SSH handshake timed out"
+	}
+	return "ssh_handshake_failed", "SSH handshake failed; check the SSH protocol and server logs"
 }

@@ -387,8 +387,8 @@ func TestNativeTerminalHostKeyMismatch(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer c.Close()
-	readUntil(t, c, "host key verification failed")
-	waitAudit(t, f.s, id, "ssh_handshake_failed")
+	readUntil(t, c, "host key does not match")
+	waitAudit(t, f.s, id, "ssh_host_key_mismatch")
 }
 func TestNativeTerminalOriginOwnershipAndLimits(t *testing.T) {
 	f := newTerminalFixture(t, false)

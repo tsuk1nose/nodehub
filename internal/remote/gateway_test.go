@@ -54,3 +54,34 @@ func TestDataTicketSingleUseAndDeviceBinding(t *testing.T) {
 		t.Fatal("data ticket replay accepted")
 	}
 }
+
+func TestDataConnectionErrorRequiresValidTicket(t *testing.T) {
+	g := New(Config{Enabled: true}, nil, Hooks{})
+	d := &device{serial: "0123456789AB"}
+	token := random()
+	s := &session{id: random(), serial: d.serial, dev: d, created: time.Now(), ready: make(chan struct{}), done: make(chan struct{}), token: sha256.Sum256([]byte(token))}
+	g.devices[d.serial] = d
+	g.sessions[s.id] = s
+	srv := httptest.NewServer(http.HandlerFunc(g.Data))
+	defer srv.Close()
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if err = c.WriteJSON(wire.Message{Type: "data", Serial: d.serial, Session: s.id, Token: token, Error: "ssh_connection_refused", Address: "127.0.0.1:2222"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-s.ready:
+	case <-time.After(time.Second):
+		t.Fatal("error did not reach session")
+	}
+	defer s.tunnel.Close()
+	if s.localError != "ssh_connection_refused" || s.localAddress != "127.0.0.1:2222" {
+		t.Fatal("connection error was lost")
+	}
+	if localSSHError(s.localError) != "Local SSH connection refused; check the SSH listener" {
+		t.Fatal("incorrect message")
+	}
+}
