@@ -47,7 +47,7 @@ After reboot verify root mount, hostname, service identity/connectivity, and `/d
 
 ## Storage boundary
 
-The initializer does not create or mount `/data`. MeshAgent is installed entirely at `/data/nodehub/meshagent` and requires that writable Btrfs mount; Tailscale and native Agent paths remain unchanged. Establish the root filesystem's persistent identity baseline before OverlayFS.
+The initializer does not create or mount `/data`. MeshAgent is installed at `/usr/local/mesh_services/meshagent` on the root baseline and receives a default 64 MiB executable RAM overlay after reboot; Tailscale and native Agent paths remain unchanged. Establish the root filesystem's persistent identity baseline before OverlayFS.
 
 ## Verified MeshAgent binary hook
 

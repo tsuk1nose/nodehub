@@ -1,37 +1,43 @@
-# Read-only node runtime directories
+# Read-only root and temporary writable directories
 
 English | [简体中文](zh-CN/docs/readonly-runtime.md)
 
-The HTTPS initializer installs `/usr/local/lib/nodehub/readonly-runtime`. Before enabling root overlay and cleaning up initialization tools, the finalizer runs this helper to configure the next boot. It is a retained boot component, not an enrollment program, and contains no token.
+The merged root stays read-only. Only configured directories receive bounded RAM overlays, preserving baseline files while discarding runtime modifications at reboot. `/etc` is read-only unless one of its directories is explicitly configured.
 
-## NetworkManager
+## Configuration
 
-If `/var/lib/NetworkManager` exists, it must be a real directory. An existing `secret_key` is preserved in the baseline, but its absence does not block finalization or startup. NetworkManager manages this file itself; identities generated only in the RAM upper layer may change after reboot. This is accepted for these nodes. Node machine identities still follow the image-sealing procedure.
+HTTPS bootstrap installs `/usr/local/lib/nodehub/readonly-runtime`. Finalization creates `/etc/nodehub/readonly-runtime.json` on the persistent baseline. Defaults include optional overlays for NetworkManager (16 MiB) and `/usr/local/mesh_services/meshagent` (64 MiB, executable); `secret_key` is not required.
 
-On overlay-root boots, `nodehub-network-state.service` bind-mounts the existing directory read-only under `/run/nodehub-network-state/lower`, then mounts an overlay at `/var/lib/NetworkManager`. Upper/work directories use a dedicated 16 MiB tmpfs with restrictive permissions. This preserves baseline files while allowing DHCP leases and other runtime changes. Writes disappear at reboot; changes to NetworkManager state that must persist require maintenance mode. Wi-Fi profiles and credentials must retain their independently configured persistent storage; this helper does not relocate profiles.
-
-The NetworkManager service requires the mount service and starts after it. An invalid state directory or failed mount prevents NetworkManager startup instead of proceeding with an unusable state directory. NetworkManager restarts retain the same upper layer until OS reboot. On a non-overlay maintenance boot the helper does nothing, so updates reach the persistent directory. Systems without this directory receive only the logging policy; installing NetworkManager later requires running setup in maintenance mode.
-
-## Logs and other storage
-
-`/etc/systemd/journald.conf.d/60-nodehub-volatile.conf` sets `Storage=volatile`, `RuntimeMaxUse=64M`, and `RuntimeKeepFree=32M`. Journald writes to `/run/log/journal`; logs disappear at reboot. These are journald retention controls, not a global limit on `/run` or other log writers. Existing administrator files with different contents are not overwritten. The new policy applies on reboot; setup does not restart active network or logging services.
-
-`/run` and `/tmp` retain the OS mounts and limits. No new writable mount is added to `/var/tmp`, `/var/log`, `/etc`, or the whole `/var/lib`. MeshAgent remains on `/data/nodehub/meshagent`; Tailscale and native Agent paths remain unchanged. The root overlay is not remounted writable. This change does not resolve the separate systemd root-remount, apt, GRUB-recording, or wtmpdb policies.
-
-## Acceptance on a new image
-
-Rebuild the center image so its installer manifest includes `client/readonly-runtime.py`, then prepare a new template normally. Manual initializer installations must also install this file as `/usr/local/lib/nodehub/readonly-runtime` (root-owned, mode 0700) before calling the overlay hook.
-
-After reboot check:
-
-```sh
-systemctl status nodehub-network-state NetworkManager --no-pager
-findmnt --target /var/lib/NetworkManager
-findmnt --target /run/nodehub-network-state
-findmnt --target /
-journalctl --disk-usage
+```json
+{
+  "temporary_directories": [
+    {"path": "/var/lib/NetworkManager", "memory_mb": 16, "optional": true},
+    {"path": "/usr/local/mesh_services/meshagent", "memory_mb": 64, "optional": true, "allow_exec": true},
+    {"path": "/var/lib/animactrl", "memory_mb": 32},
+    {"path": "/etc/animactrl", "memory_mb": 4}
+  ]
+}
 ```
 
-Verify the root remains read-only, the NetworkManager overlay is writable, the tmpfs limit is 16 MiB, and hotspot DHCP clients receive leases. Exercise hotspot stop/start, client disconnect/reconnect, NetworkManager restart, and OS reboot. Verify saved Wi-Fi profiles survive and machine identity stays stable. NetworkManager identifiers created only in RAM may change after reboot; verify connectivity and management access recover. Test mount failure with a local recovery console: NetworkManager must not start. A full 16 MiB upper layer causes writes to fail; it does not provide unlimited memory or guarantee hotspot recovery.
+Create directories first with ownership and permissions appropriate for the actual service. The example state directory must match the service's StateDirectory. Paths must be existing absolute directories without symlinks; duplicate or nested entries are rejected. Single files are not supported. `memory_mb` is the per-directory tmpfs capacity limit (1–1024 MiB), not an upfront reservation. `optional: true` skips a missing directory. `/`, `/run`, `/dev`, `/proc`, `/sys`, `/data`, `/media` and their descendants cannot be configured. Avoid covering the entire `/var/lib`, which would also discard credential renewals.
 
-Unit tests cover maintenance bypass, missing identity refusal, mount ordering/size policy, service dependencies, and configuration preservation. Real NetworkManager/hotspot boot acceptance remains pending. This repository does not contain the hotspot application shown in the reported screenshot; its false-running status and retry/recovery logic must be addressed in that application separately.
+## Installation and updates
+
+Before sealing, or in a persistent `overlayroot=disabled` maintenance boot, edit the configuration and run:
+
+```sh
+python3 /usr/local/lib/nodehub/readonly-runtime
+systemctl daemon-reload
+```
+
+Install the updated helper first on existing nodes. Setup upgrades only the exact former generated default to include MeshAgent; custom lists must explicitly include its installed directory with allow_exec=true. Setup otherwise preserves user configuration and migrates known legacy NodeHub root-writable and NetworkManager mount services. It does not switch live mounts or restart networking. Reboot into OverlayFS to apply changes. Edits made only in RAM do not persist.
+
+The required `nodehub-temporary-writes.service` runs after systemd root remounting and before local filesystem preparation and normal services. It verifies a read-only disk baseline and tmpfs root upper, ensures the merged root is read-only, and mounts each configured directory. Configuration or mount failures block normal local filesystem startup; have a recovery console available. Non-overlay maintenance boots leave mounts unchanged.
+
+Each overlay preserves directory ownership, permissions and baseline files, with nosuid/nodev RAM storage; execution defaults to disabled and `allow_exec: true` enables it on both tmpfs and overlay mounts. Storage is under `/run/nodehub-temporary-writes`. Journald logs are volatile under `/run`, with RuntimeMaxUse=64M and RuntimeKeepFree=32M. MeshAgent identity is saved in each node’s root baseline before enabling OverlayFS. Legacy `/data` installations are not migrated automatically; test on a fresh template. Other service identity paths are unchanged.
+
+Credentials or refreshed tokens that must survive reboot need dedicated persistent storage on `/data`.
+
+## Acceptance
+
+Verify `/` is `ro` and configured directories are `rw`. Use separate test files to verify reboot discards changes and restores baseline files. Check networking, hotspot, business services and management connectivity. Exercise missing directories, mount failure and capacity limits. Unit tests do not replace real-device reboot acceptance.

@@ -59,8 +59,10 @@ RAM overlay 只保留初始化时写入底层的身份，之后的 Tailscale 状
 
 ## 当前存储方案
 
-仅将 MeshAgent 整个安装目录放到节点 `/data/nodehub/meshagent`。初始化要求 `/data` 已挂载为可写 Btrfs。服务通过 `RequiresMountsFor=/data`、`BindsTo=data.mount`、挂载点条件及启动前检查依赖该挂载；未挂载时不启动 MeshAgent、不生成备用身份，也不阻止系统开机。保留 `/data` 的 nofail 和有限等待时间。
+MeshAgent 现安装于持久根目录 `/usr/local/mesh_services/meshagent`，首次登记在启用 OverlayFS 前保存程序、配置和独立身份基线。默认运行目录策略提供 64 MiB 内存写入层并设置 `allow_exec: true`，运行修改重启后丢弃。服务等待运行目录挂载并检查目录可写，不再依赖 `/data`。旧 `/data` 安装不自动迁移，这轮应使用未登记的新模板测试。
 
-Tailscale 和原生 Agent 身份保持原根目录路径。初始化不再启用顶层 OverlayFS 可写修复服务，此前的可写 workaround 已被新安装方案取代；不会自动迁移旧测试机。MeshAgent 目录权限为 0700、设置为 0600，`/data/nodehub` 须为 root 拥有且其他用户不可写。新方案需新机验证跨重启身份、连接与缺少 /data 时开机行为；MeshAgent 测试不能替代只读根目录下 Tailscale 续期及重新登录验证。
+Tailscale 和原生 Agent 身份保持原根目录路径。初始化现安装 `nodehub-temporary-writes.service`，根目录默认只读，仅为 `/etc/nodehub/readonly-runtime.json` 指定的目录提供内存写入层；旧节点需在持久维护模式安装更新的运行目录工具并重新运行配置，不会自动迁移。MeshAgent 目录权限为 0700、设置为 0600，`/data/nodehub` 须为 root 拥有且其他用户不可写。新方案需新机验证跨重启身份、连接与缺少 /data 时开机行为；MeshAgent 测试不能替代只读根目录下 Tailscale 续期及重新登录验证。
 
 [只读运行目录](readonly-runtime.md)
+
+临时写入采用目录白名单：合并 `/` 和磁盘底层均保持只读，仅配置目录可写；见[运行目录策略](readonly-runtime.md)。

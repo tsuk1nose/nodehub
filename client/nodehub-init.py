@@ -258,7 +258,7 @@ def main():
             # appeared online once. Both executable and identity must survive.
             if not os.path.ismount('/data'):
                 raise RuntimeError('/data is not mounted; refusing cleanup')
-            mesh_dir = Path('/data/nodehub/meshagent')
+            mesh_dir = Path('/usr/local/mesh_services/meshagent')
             for name in ('meshagent', 'meshagent.msh', 'meshagent.db'):
                 if not (mesh_dir / name).is_file():
                     raise RuntimeError('Persistent MeshAgent installation is incomplete; refusing cleanup')
@@ -272,7 +272,14 @@ def main():
             atomic_json(state_file, state)
             # Validate and prepare the next boot before removing recovery tools.
             # This only writes configuration; root remains persistent until reboot.
-            run([hook])
+            # Commit the clone's identity database before freezing its baseline.
+            run(['systemctl', 'stop', 'meshagent.service'])
+            try:
+                run(['sync'])
+                run([hook])
+            finally:
+                # Restore the management channel if overlay preparation fails.
+                run(['systemctl', 'start', 'meshagent.service'])
             service = Path('/etc/systemd/system/nodehub-init.service')
             if service.exists():
                 run(['systemctl', 'disable', '--now', 'nodehub-init.service'])

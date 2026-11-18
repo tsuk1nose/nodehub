@@ -35,28 +35,23 @@ def write_marker(path, value):
     finally:
         if os.path.exists(name): os.unlink(name)
 
-INSTALL_DIR = Path('/data/nodehub/meshagent')
+INSTALL_DIR = Path('/usr/local/mesh_services/meshagent')
 
-def require_data_mount():
-    if not os.path.ismount('/data'):
-        raise RuntimeError('/data must be mounted before installing MeshAgent')
-    fs = subprocess.check_output(['findmnt', '-n', '-o', 'FSTYPE', '--target', '/data'], text=True).strip()
-    if fs != 'btrfs' or os.statvfs('/data').f_flag & os.ST_RDONLY:
-        raise RuntimeError('/data must be writable Btrfs')
-    for path in (Path('/data'), Path('/data/nodehub')):
-        if path.is_symlink(): raise RuntimeError('MeshAgent data directories must not be symbolic links')
-        if path.exists() and path.stat().st_uid != 0:
-            raise RuntimeError('MeshAgent data directories must be owned by root')
-    parent = Path('/data/nodehub')
-    if parent.exists() and parent.stat().st_mode & 0o022:
-        raise RuntimeError('MeshAgent data directory must not be writable by other users')
+def require_persistent_root():
+    if subprocess.check_output(['findmnt', '-n', '-o', 'FSTYPE', '--target', '/'], text=True).strip() == 'overlay':
+        raise RuntimeError('Install MeshAgent on the persistent root before enabling OverlayFS')
+    if os.statvfs('/').f_flag & os.ST_RDONLY:
+        raise RuntimeError('MeshAgent installation requires a writable persistent root')
+    for path in (Path('/usr/local'), Path('/usr/local/mesh_services'), INSTALL_DIR):
+        if path.is_symlink() or (path.exists() and (path.stat().st_uid != 0 or path.stat().st_mode & 0o022)):
+            raise RuntimeError('MeshAgent installation directories must be root-owned and not writable by other users')
 
 def install_mount_guard():
-    path = Path('/etc/systemd/system/meshagent.service.d/data.conf')
+    path = Path('/etc/systemd/system/meshagent.service.d/runtime.conf')
     if path.is_symlink() or path.parent.is_symlink():
         raise RuntimeError('MeshAgent mount guard must not be a symbolic link')
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('[Unit]\nRequiresMountsFor=/data\nBindsTo=data.mount\nAfter=data.mount\nConditionPathIsMountPoint=/data\n[Service]\nExecStartPre=/usr/bin/mountpoint -q /data\n')
+    path.write_text('[Unit]\nAfter=nodehub-temporary-writes.service\nRequiresMountsFor=/usr/local/mesh_services/meshagent\n[Service]\nExecStartPre=/usr/bin/test -w /usr/local/mesh_services/meshagent\n')
     os.chmod(path, 0o644)
 
 def verify_service(directory=INSTALL_DIR):
@@ -72,7 +67,7 @@ def verify_service(directory=INSTALL_DIR):
 
 def main():
     if os.geteuid() != 0: raise RuntimeError('Run the installer as root')
-    require_data_mount()
+    require_persistent_root()
     serial = os.environ.get('NODEHUB_SERIAL', '')
     if not re.fullmatch('[A-Z0-9]{12}', serial): raise RuntimeError('A valid NODEHUB_SERIAL is required')
     config_path = trusted_file(sys.argv[1] if len(sys.argv) > 1 else '/etc/nodehub/mesh-install.json')
@@ -86,6 +81,8 @@ def main():
     if hostname.upper() != serial: raise RuntimeError('Set the system hostname to the serial before installing MeshAgent')
     marker = Path('/var/lib/nodehub-mesh/install.json')
     owned = json.loads(marker.read_text()) if marker.exists() else None
+    if owned and (Path('/data/nodehub/meshagent').exists() or Path('/etc/systemd/system/meshagent.service.d/data.conf').exists()):
+        raise RuntimeError('Legacy /data MeshAgent requires explicit migration; test on a fresh unregistered template')
     unit = 'meshagent.service'
     exists = subprocess.run(['systemctl', 'show', unit, '-p', 'LoadState', '--value'], capture_output=True, text=True).stdout.strip() == 'loaded'
     if owned and owned.get('serial') != serial: raise RuntimeError('MeshAgent belongs to another node; refusing to overwrite it')
@@ -108,7 +105,7 @@ def main():
     if staged.is_symlink(): raise RuntimeError('MeshAgent installation must not be a symbolic link')
     if staged.exists() and not owned:
         raise RuntimeError('An unmanaged MeshAgent directory exists; refusing to overwrite it')
-    write_marker(marker, {'serial': serial, 'source_sha256': expected, 'phase': 'installing'})
+    write_marker(marker, {'serial': serial, 'source_sha256': expected, 'phase': 'installing', 'install_dir': str(INSTALL_DIR)})
     staged.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(staged, 0o700)
     for name in ('meshagent', 'meshagent.msh', 'meshagent.db'):
@@ -129,7 +126,7 @@ def main():
     verify_service()
     if subprocess.run(['systemctl', 'is-active', '--quiet', unit]).returncode:
         raise RuntimeError('MeshAgent is not running after installation; check the systemd journal')
-    write_marker(marker, {'serial': serial, 'source_sha256': expected, 'phase': 'installed'})
+    write_marker(marker, {'serial': serial, 'source_sha256': expected, 'phase': 'installed', 'install_dir': str(INSTALL_DIR)})
 
 if __name__ == '__main__':
     try:

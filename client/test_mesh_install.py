@@ -41,26 +41,22 @@ class PersistentMeshServiceTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'identity database'):
                 mesh.verify_service(self.directory)
 
-class DataMountPolicyTest(unittest.TestCase):
-    def test_missing_mount_is_rejected_before_directory_access(self):
-        with patch.object(mesh.os.path, 'ismount', return_value=False), patch.object(mesh, 'Path') as path:
-            with self.assertRaisesRegex(RuntimeError, 'must be mounted'): mesh.require_data_mount()
-        path.assert_not_called()
+class RootInstallationPolicyTest(unittest.TestCase):
+    def test_overlay_root_is_rejected(self):
+        with patch.object(mesh.subprocess, 'check_output', return_value='overlay'):
+            with self.assertRaisesRegex(RuntimeError, 'persistent root'): mesh.require_persistent_root()
 
-    def test_wrong_filesystem_is_rejected(self):
-        with patch.object(mesh.os.path, 'ismount', return_value=True), patch.object(mesh.subprocess, 'check_output', return_value='ext4\n'):
-            with self.assertRaisesRegex(RuntimeError, 'writable Btrfs'): mesh.require_data_mount()
+    def test_readonly_root_is_rejected(self):
+        with patch.object(mesh.subprocess, 'check_output', return_value='ext4'), patch.object(mesh.os, 'statvfs', return_value=SimpleNamespace(f_flag=mesh.os.ST_RDONLY)):
+            with self.assertRaisesRegex(RuntimeError, 'writable persistent root'): mesh.require_persistent_root()
 
-    def test_readonly_data_is_rejected(self):
-        with patch.object(mesh.os.path, 'ismount', return_value=True), patch.object(mesh.subprocess, 'check_output', return_value='btrfs\n'), patch.object(mesh.os, 'statvfs', return_value=SimpleNamespace(f_flag=mesh.os.ST_RDONLY)):
-            with self.assertRaisesRegex(RuntimeError, 'writable Btrfs'): mesh.require_data_mount()
-
-    def test_guard_orders_and_stops_service_with_data_mount(self):
+    def test_guard_uses_runtime_overlay_without_data_dependency(self):
         with tempfile.TemporaryDirectory() as folder:
-            target = Path(folder) / 'data.conf'
+            target = Path(folder) / 'runtime.conf'
             with patch.object(mesh, 'Path', return_value=target): mesh.install_mount_guard()
             config = target.read_text()
-            for directive in ('RequiresMountsFor=/data', 'BindsTo=data.mount', 'After=data.mount', 'ConditionPathIsMountPoint=/data', 'ExecStartPre=/usr/bin/mountpoint -q /data'):
-                self.assertIn(directive, config)
+            self.assertIn('After=nodehub-temporary-writes.service', config)
+            self.assertIn('ExecStartPre=/usr/bin/test -w /usr/local/mesh_services/meshagent', config)
+            self.assertNotIn('/data', config)
 
 if __name__ == '__main__': unittest.main()
