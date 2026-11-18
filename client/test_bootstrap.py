@@ -16,7 +16,7 @@ bootstrap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bootstrap)
 
 class BootstrapTests(unittest.TestCase):
-    def test_sealing_removes_only_host_keys_and_powers_off_last(self):
+    def test_sealing_removes_only_host_keys_without_powering_off(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             def local(value):
@@ -37,7 +37,9 @@ class BootstrapTests(unittest.TestCase):
             self.assertTrue(local('/etc/ssh/ssh_host_custom_config').exists())
             self.assertEqual(local('/etc/machine-id').read_text(), '')
             self.assertEqual(local('/var/lib/dbus/machine-id').readlink(), Path('/etc/machine-id'))
-            self.assertEqual(commands[-2:], [['sync'], ['systemctl', 'poweroff']])
+            self.assertEqual(commands[-1], ['sync'])
+            self.assertNotIn(['systemctl', 'poweroff'], commands)
+            self.assertNotIn(['systemctl', 'reboot'], commands)
             unit = initializer.atomic_write.call_args.args[1]
             self.assertIn('Before=ssh.service nodehub-init.service', unit)
             self.assertIn('ExecStart=/usr/bin/ssh-keygen -A', unit)
@@ -92,6 +94,20 @@ class BootstrapTests(unittest.TestCase):
             with patch.object(bootstrap, 'Path', side_effect=local):
                 with self.assertRaisesRegex(RuntimeError, 'Cannot verify'):
                     bootstrap.check_tailscale_store()
+
+    def test_runtime_defaults_are_available_without_overwriting_user_policy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config = Path(folder) / 'readonly-runtime.json'
+            initializer = Mock()
+            defaults = {'temporary_directories': [{'path': '/var/lib/NetworkManager'}]}
+            with patch.object(bootstrap, 'Path', return_value=config):
+                bootstrap.write_runtime_defaults(initializer, defaults)
+                initializer.atomic_json.assert_called_once_with(config, defaults)
+                initializer.reset_mock()
+                config.write_text('{"temporary_directories": []}')
+                bootstrap.write_runtime_defaults(initializer, defaults)
+                initializer.atomic_json.assert_not_called()
+                self.assertEqual(json.loads(config.read_text()), {'temporary_directories': []})
 
     def test_https_center_and_no_credentials(self):
         self.assertEqual(bootstrap.center_url('https://hub.example.com/'), 'https://hub.example.com')

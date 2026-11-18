@@ -6,7 +6,7 @@ The merged root stays read-only. Only configured directories receive bounded RAM
 
 ## Configuration
 
-HTTPS bootstrap installs `/usr/local/lib/nodehub/readonly-runtime`. Finalization creates `/etc/nodehub/readonly-runtime.json` on the persistent baseline. Defaults include optional overlays for NetworkManager (16 MiB) and `/usr/local/mesh_services/meshagent` (64 MiB, executable); `secret_key` is not required.
+HTTPS bootstrap installs `/usr/local/lib/nodehub/readonly-runtime`. Installation immediately creates `/etc/nodehub/readonly-runtime.json` on the persistent baseline for editing before imaging; finalization reads it and installs the boot mount service. Defaults include optional overlays for NetworkManager (16 MiB) and `/usr/local/mesh_services/meshagent` (64 MiB, executable); `secret_key` is not required.
 
 ```json
 {

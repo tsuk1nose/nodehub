@@ -139,6 +139,16 @@ def clean_template_tailscale():
         shutil.rmtree(directory)
     # Leave tailscaled stopped until the cloned machine boots.
 
+def write_runtime_defaults(initializer, defaults):
+    # Expose policy during template preparation, before clone finalization.
+    # Do not install early-boot mounts or overwrite the operator's policy here.
+    config = Path('/etc/nodehub/readonly-runtime.json')
+    if config.is_symlink():
+        raise RuntimeError('Runtime configuration must not be a symbolic link')
+    if not config.exists():
+        initializer.atomic_json(config, defaults)
+
+
 def seal_template(initializer):
     # This unit runs on each boot but only generates missing keys. It also covers
     # installations without the optional native terminal/SSH provisioner.
@@ -169,14 +179,14 @@ WantedBy=multi-user.target
         dbus.symlink_to('/etc/machine-id')
     Path('/etc/machine-id').write_text('')
     run(['sync'])
-    print('Template sealed. Powering off: capture the image while powered off. '
-          'Booting this source again consumes its template state.')
-    run(['systemctl', 'poweroff'])
+    print('Template prepared; staying powered on for image configuration. '
+          'Edit /etc/nodehub/readonly-runtime.json, then shut down manually and capture the image. '
+          'Do not reboot this source: its next boot starts enrollment.')
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', required=True)
-    parser.add_argument('--prepare-image', action='store_true', help='Install, seal an unregistered template, and power it off for cloning')
+    parser.add_argument('--prepare-image', action='store_true', help='Install and seal a template without enrolling or powering off; configure it, then shut down manually')
     args = parser.parse_args()
     if os.geteuid() != 0: raise RuntimeError('Run as root')
     os.umask(0o077)
@@ -234,6 +244,9 @@ def main():
         import importlib.util
         spec = importlib.util.spec_from_file_location('nodehub_init', folder / 'client/nodehub-init.py')
         initializer = importlib.util.module_from_spec(spec); spec.loader.exec_module(initializer)
+        runtime_spec = importlib.util.spec_from_file_location('nodehub_runtime', folder / 'client/readonly-runtime.py')
+        runtime = importlib.util.module_from_spec(runtime_spec); runtime_spec.loader.exec_module(runtime)
+        write_runtime_defaults(initializer, runtime.DEFAULT)
         if manifest['terminal_enabled']:
             run(['bash', str(folder / 'agent/install.sh'), str(folder / ('bin/nodehub-agent-linux-' + arch))])
             config_file = Path('/etc/nodehub-agent/config.json')

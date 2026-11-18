@@ -6,7 +6,7 @@
 
 ## 配置
 
-HTTPS 初始化安装 `/usr/local/lib/nodehub/readonly-runtime`。收尾在持久根目录上创建 `/etc/nodehub/readonly-runtime.json`，默认包含 NetworkManager（16 MiB）和 `/usr/local/mesh_services/meshagent`（64 MiB，允许执行），均允许目录不存在时跳过。缺少 `secret_key` 不影响安装或启动。
+HTTPS 初始化安装 `/usr/local/lib/nodehub/readonly-runtime`。安装时立即在持久根目录上创建 `/etc/nodehub/readonly-runtime.json`，可在制镜像前编辑；收尾读取该配置并安装启动挂载服务，默认包含 NetworkManager（16 MiB）和 `/usr/local/mesh_services/meshagent`（64 MiB，允许执行），均允许目录不存在时跳过。缺少 `secret_key` 不影响安装或启动。
 
 例如，在已创建对应目录后，配置可改为：
 
