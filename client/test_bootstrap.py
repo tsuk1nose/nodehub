@@ -97,17 +97,17 @@ class BootstrapTests(unittest.TestCase):
 
     def test_runtime_defaults_are_available_without_overwriting_user_policy(self):
         with tempfile.TemporaryDirectory() as folder:
-            config = Path(folder) / 'readonly-runtime.json'
+            config = Path(folder) / 'readonly-runtime.toml'
             initializer = Mock()
-            defaults = {'temporary_directories': [{'path': '/var/lib/NetworkManager'}]}
+            defaults = '# Runtime state\n[[temporary_directories]]\npath = \"/var/lib/NetworkManager\"\n'
             with patch.object(bootstrap, 'Path', return_value=config):
                 bootstrap.write_runtime_defaults(initializer, defaults)
-                initializer.atomic_json.assert_called_once_with(config, defaults)
+                initializer.atomic_write.assert_called_once_with(config, defaults)
                 initializer.reset_mock()
-                config.write_text('{"temporary_directories": []}')
+                config.write_text('temporary_directories = []\n')
                 bootstrap.write_runtime_defaults(initializer, defaults)
-                initializer.atomic_json.assert_not_called()
-                self.assertEqual(json.loads(config.read_text()), {'temporary_directories': []})
+                initializer.atomic_write.assert_not_called()
+                self.assertEqual(config.read_text(), 'temporary_directories = []\n')
 
     def test_https_center_and_no_credentials(self):
         self.assertEqual(bootstrap.center_url('https://hub.example.com/'), 'https://hub.example.com')

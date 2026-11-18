@@ -50,7 +50,7 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
   --server 'https://hub.example.com' --prepare-image
 ```
 
-该选项启用首次启动服务但不启动。封装前要求挂载实际 `/data`，并拒绝已有 NodeHub、原生 Agent、MeshAgent 身份及 cloud-init 缓存。Tailscale 允许存在未登录守护进程自动生成的状态，但必须为 `NeedsLogin` 且没有保存的登录配置；封装时停止 tailscaled 并清理其状态目录，避免复制机器密钥与日志身份。已登记、停止但保留登记信息、无法确认或未知格式的状态仍拒绝封装。安装完成后删除 SSH 主机密钥、清空 machine-id、将 D-Bus machine-id 链接到系统文件，但不自动关机。安装阶段即创建 `/etc/nodehub/readonly-runtime.json` 默认配置（NetworkManager 和 MeshAgent），已有管理员配置不覆盖；可以继续添加临时可写目录。新增的主机密钥服务在克隆机 SSH 服务启动前补齐缺失密钥；已有密钥不会轮换。该选项不能用于直接克隆已登记生产节点。
+该选项启用首次启动服务但不启动。封装前要求挂载实际 `/data`，并拒绝已有 NodeHub、原生 Agent、MeshAgent 身份及 cloud-init 缓存。Tailscale 允许存在未登录守护进程自动生成的状态，但必须为 `NeedsLogin` 且没有保存的登录配置；封装时停止 tailscaled 并清理其状态目录，避免复制机器密钥与日志身份。已登记、停止但保留登记信息、无法确认或未知格式的状态仍拒绝封装。安装完成后删除 SSH 主机密钥、清空 machine-id、将 D-Bus machine-id 链接到系统文件，但不自动关机。安装阶段即创建 `/etc/nodehub/readonly-runtime.toml` 默认配置（NetworkManager 和 MeshAgent），已有管理员配置不覆盖；可以继续添加临时可写目录。新增的主机密钥服务在克隆机 SSH 服务启动前补齐缺失密钥；已有密钥不会轮换。该选项不能用于直接克隆已登记生产节点。
 
 模板必须预先配置适合目标节点的 DHCP 网络，不得携带固定 IP、旧 MAC 绑定或固定 DHCP Client-ID/DUID；本流程不会盲目改写网络配置。封装后在关机状态制作镜像，勿再次启动源模板。各克隆机必须具有独立 MAC（虚拟机还需独立的虚拟机 UUID）。首次启动在可持久写入的根目录生成身份，完成登记后才启用 OverlayFS。
 
@@ -74,4 +74,4 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
 
 MeshAgent 现安装于持久根目录 `/usr/local/mesh_services/meshagent`，首次登记在启用 OverlayFS 前保存程序、配置和独立身份基线。默认运行目录策略提供 64 MiB 内存写入层并设置 `allow_exec: true`，运行修改重启后丢弃。服务等待运行目录挂载并检查目录可写，不再依赖 `/data`。旧 `/data` 安装不自动迁移，这轮应使用未登记的新模板测试。
 
-Tailscale 和原生 Agent 身份保持原根目录路径。初始化现安装 `nodehub-temporary-writes.service`，根目录默认只读，仅为 `/etc/nodehub/readonly-runtime.json` 指定的目录提供内存写入层；旧节点需在持久维护模式安装更新的运行目录工具并重新运行配置，不会自动迁移。MeshAgent 目录权限为 0700、设置为 0600，`/data/nodehub` 须为 root 拥有且其他用户不可写。新方案需新机验证跨重启身份、连接与缺少 /data 时开机行为；MeshAgent 测试不能替代只读根目录下 Tailscale 续期及重新登录验证。
+Tailscale 和原生 Agent 身份保持原根目录路径。初始化现安装 `nodehub-temporary-writes.service`，根目录默认只读，仅为 `/etc/nodehub/readonly-runtime.toml` 指定的目录提供内存写入层；旧节点需在持久维护模式安装更新的运行目录工具并重新运行配置，不会自动迁移。MeshAgent 目录权限为 0700、设置为 0600，`/data/nodehub` 须为 root 拥有且其他用户不可写。新方案需新机验证跨重启身份、连接与缺少 /data 时开机行为；MeshAgent 测试不能替代只读根目录下 Tailscale 续期及重新登录验证。

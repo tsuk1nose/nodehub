@@ -6,19 +6,28 @@
 
 ## 配置
 
-HTTPS 初始化安装 `/usr/local/lib/nodehub/readonly-runtime`。安装时立即在持久根目录上创建 `/etc/nodehub/readonly-runtime.json`，可在制镜像前编辑；收尾读取该配置并安装启动挂载服务，默认包含 NetworkManager（16 MiB）和 `/usr/local/mesh_services/meshagent`（64 MiB，允许执行），均允许目录不存在时跳过。缺少 `secret_key` 不影响安装或启动。
+HTTPS 初始化安装 `/usr/local/lib/nodehub/readonly-runtime`。安装时立即在持久根目录上创建 `/etc/nodehub/readonly-runtime.toml`，可在制镜像前编辑；收尾读取该配置并安装启动挂载服务，默认包含 NetworkManager（16 MiB）和 `/usr/local/mesh_services/meshagent`（64 MiB，允许执行），均允许目录不存在时跳过。缺少 `secret_key` 不影响安装或启动。
 
 例如，在已创建对应目录后，配置可改为：
 
-```json
-{
-  "temporary_directories": [
-    {"path": "/var/lib/NetworkManager", "memory_mb": 16, "optional": true},
-    {"path": "/usr/local/mesh_services/meshagent", "memory_mb": 64, "optional": true, "allow_exec": true},
-    {"path": "/var/lib/animactrl", "memory_mb": 32},
-    {"path": "/etc/animactrl", "memory_mb": 4}
-  ]
-}
+```toml
+# NetworkManager runtime state.
+[[temporary_directories]]
+path = "/var/lib/NetworkManager"
+memory_mb = 16
+optional = true
+
+# MeshAgent executable, settings, and identity database.
+[[temporary_directories]]
+path = "/usr/local/mesh_services/meshagent"
+memory_mb = 64
+optional = true
+allow_exec = true
+
+# Optional application state (create this directory before imaging).
+[[temporary_directories]]
+path = "/etc/animactrl"
+memory_mb = 4
 ```
 
 示例中的 `/var/lib/animactrl` 需与实际服务的 StateDirectory 一致，并提前按服务要求设置所有者和权限。`/etc/animactrl` 可写只开放该子目录，其他 `/etc` 路径仍只读。目录内全部文件均可临时修改；不支持配置单个文件。
@@ -34,7 +43,7 @@ python3 /usr/local/lib/nodehub/readonly-runtime
 systemctl daemon-reload
 ```
 
-安装会保留管理员自定义配置；仅精确匹配旧版内置默认配置时自动补充 MeshAgent 项。若已经安装新路径 MeshAgent，自定义列表必须包含其目录并允许执行，否则拒绝收尾。安装并迁移已知的旧 NodeHub 根目录可写服务和 NetworkManager 专用挂载服务。它不在线切换现有挂载，也不会重启网络；重启进入 OverlayFS 后应用。现有节点需要先安装更新后的 helper，不能只在临时层修改配置。
+安装会保留管理员自定义配置；只读取 TOML，不兼容或迁移旧 JSON。若已经安装新路径 MeshAgent，自定义列表必须包含其目录并允许执行，否则拒绝收尾。安装并迁移已知的旧 NodeHub 根目录可写服务和 NetworkManager 专用挂载服务。它不在线切换现有挂载，也不会重启网络；重启进入 OverlayFS 后应用。现有节点需要先安装更新后的 helper，不能只在临时层修改配置。
 
 `nodehub-temporary-writes.service` 在 systemd 根目录重挂载之后、本地文件系统准备和普通服务之前运行。它验证磁盘底层只读、根上层位于 tmpfs，并确保合并根目录只读；之后按配置挂载局部 overlay。配置无效或挂载失败会阻止 `local-fs.target` 正常启动，应准备本地恢复控制台。维护启动不修改挂载。
 

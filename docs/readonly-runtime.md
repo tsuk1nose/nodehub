@@ -6,17 +6,26 @@ The merged root stays read-only. Only configured directories receive bounded RAM
 
 ## Configuration
 
-HTTPS bootstrap installs `/usr/local/lib/nodehub/readonly-runtime`. Installation immediately creates `/etc/nodehub/readonly-runtime.json` on the persistent baseline for editing before imaging; finalization reads it and installs the boot mount service. Defaults include optional overlays for NetworkManager (16 MiB) and `/usr/local/mesh_services/meshagent` (64 MiB, executable); `secret_key` is not required.
+HTTPS bootstrap installs `/usr/local/lib/nodehub/readonly-runtime`. Installation immediately creates `/etc/nodehub/readonly-runtime.toml` on the persistent baseline for editing before imaging; finalization reads it and installs the boot mount service. Defaults include optional overlays for NetworkManager (16 MiB) and `/usr/local/mesh_services/meshagent` (64 MiB, executable); `secret_key` is not required.
 
-```json
-{
-  "temporary_directories": [
-    {"path": "/var/lib/NetworkManager", "memory_mb": 16, "optional": true},
-    {"path": "/usr/local/mesh_services/meshagent", "memory_mb": 64, "optional": true, "allow_exec": true},
-    {"path": "/var/lib/animactrl", "memory_mb": 32},
-    {"path": "/etc/animactrl", "memory_mb": 4}
-  ]
-}
+```toml
+# NetworkManager runtime state.
+[[temporary_directories]]
+path = "/var/lib/NetworkManager"
+memory_mb = 16
+optional = true
+
+# MeshAgent executable, settings, and identity database.
+[[temporary_directories]]
+path = "/usr/local/mesh_services/meshagent"
+memory_mb = 64
+optional = true
+allow_exec = true
+
+# Optional application state (create this directory before imaging).
+[[temporary_directories]]
+path = "/etc/animactrl"
+memory_mb = 4
 ```
 
 Create directories first with ownership and permissions appropriate for the actual service. The example state directory must match the service's StateDirectory. Paths must be existing absolute directories without symlinks; duplicate or nested entries are rejected. Single files are not supported. `memory_mb` is the per-directory tmpfs capacity limit (1–1024 MiB), not an upfront reservation. `optional: true` skips a missing directory. `/`, `/run`, `/dev`, `/proc`, `/sys`, `/data`, `/media` and their descendants cannot be configured. Avoid covering the entire `/var/lib`, which would also discard credential renewals.
@@ -30,7 +39,7 @@ python3 /usr/local/lib/nodehub/readonly-runtime
 systemctl daemon-reload
 ```
 
-Install the updated helper first on existing nodes. Setup upgrades only the exact former generated default to include MeshAgent; custom lists must explicitly include its installed directory with allow_exec=true. Setup otherwise preserves user configuration and migrates known legacy NodeHub root-writable and NetworkManager mount services. It does not switch live mounts or restart networking. Reboot into OverlayFS to apply changes. Edits made only in RAM do not persist.
+Install the updated helper first on existing nodes. Only TOML is read; legacy JSON is not imported or migrated. Custom lists must explicitly include the installed MeshAgent directory with allow_exec=true. Setup otherwise preserves user configuration and migrates known legacy NodeHub root-writable and NetworkManager mount services. It does not switch live mounts or restart networking. Reboot into OverlayFS to apply changes. Edits made only in RAM do not persist.
 
 The required `nodehub-temporary-writes.service` runs after systemd root remounting and before local filesystem preparation and normal services. It verifies a read-only disk baseline and tmpfs root upper, ensures the merged root is read-only, and mounts each configured directory. Configuration or mount failures block normal local filesystem startup; have a recovery console available. Non-overlay maintenance boots leave mounts unchanged.
 

@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -11,12 +12,18 @@ runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 
 
+def policy_toml(entries):
+    if not entries:
+        return 'temporary_directories = []\n'
+    return '\n'.join('[[temporary_directories]]\n' + '\n'.join(f'{key} = {json.dumps(value)}' for key, value in item.items()) for item in entries)
+
+
 class RuntimePolicyTest(unittest.TestCase):
     def test_policy_supports_arbitrary_existing_directories(self):
         with tempfile.TemporaryDirectory() as folder:
-            config = Path(folder) / 'policy.json'
+            config = Path(folder) / 'policy.toml'
             directory = Path(folder) / 'state'; directory.mkdir()
-            config.write_text(json.dumps({'temporary_directories': [{'path': str(directory), 'memory_mb': 8}]}))
+            config.write_text(policy_toml([{'path': str(directory), 'memory_mb': 8}]))
             with patch.object(runtime, 'CONFIG', config):
                 policy = runtime.load_policy()
             self.assertEqual(policy[0]['path'], directory)
@@ -24,7 +31,7 @@ class RuntimePolicyTest(unittest.TestCase):
 
     def test_bad_policies_are_rejected_before_mounting(self):
         with tempfile.TemporaryDirectory() as folder:
-            config = Path(folder) / 'policy.json'
+            config = Path(folder) / 'policy.toml'
             directory = Path(folder) / 'state'; directory.mkdir()
             link = Path(folder) / 'link'; link.symlink_to(directory)
             file = Path(folder) / 'file'; file.touch()
@@ -39,7 +46,7 @@ class RuntimePolicyTest(unittest.TestCase):
             ]
             with patch.object(runtime, 'CONFIG', config):
                 for entries_value in entries:
-                    config.write_text(json.dumps({'temporary_directories': entries_value}))
+                    config.write_text(policy_toml(entries_value))
                     with self.subTest(entries=entries_value), self.assertRaises(RuntimeError):
                         runtime.load_policy()
 
@@ -99,30 +106,27 @@ class RuntimePolicyTest(unittest.TestCase):
     def test_install_persists_policy_and_early_service(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            config = root / 'policy.json'
+            config = root / 'policy.toml'
             def local(value):
                 value = str(value)
                 return Path(value) if value.startswith(str(root)) else root / value.lstrip('/')
             with patch.object(runtime, 'CONFIG', config), patch.object(runtime, 'Path', side_effect=local), patch.object(runtime, 'root_mount', return_value={'fstype': 'ext4'}), patch.object(runtime, 'load_policy', return_value=[]):
                 runtime.install()
                 runtime.install()
-            self.assertEqual(json.loads(config.read_text()), runtime.DEFAULT)
+            self.assertEqual(tomllib.loads(config.read_text()), runtime.DEFAULT)
             unit = local('/etc/systemd/system/nodehub-temporary-writes.service').read_text()
             self.assertIn('After=systemd-remount-fs.service', unit)
             self.assertIn('Before=local-fs-pre.target', unit)
             self.assertTrue(local('/etc/systemd/system/local-fs.target.requires/nodehub-temporary-writes.service').is_symlink())
 
-    def test_previous_generated_default_is_upgraded_with_meshagent(self):
+    def test_defaults_have_comments_and_json_is_not_accepted(self):
+        self.assertTrue(runtime.DEFAULT_TOML.startswith('#'))
+        self.assertEqual(tomllib.loads(runtime.DEFAULT_TOML), runtime.DEFAULT)
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            config = root / 'policy.json'
-            config.write_text(json.dumps({'temporary_directories': [runtime.DEFAULT['temporary_directories'][0]]}))
-            def local(value):
-                value = str(value)
-                return Path(value) if value.startswith(str(root)) else root / value.lstrip('/')
-            with patch.object(runtime, 'CONFIG', config), patch.object(runtime, 'Path', side_effect=local), patch.object(runtime, 'root_mount', return_value={'fstype': 'ext4'}), patch.object(runtime, 'load_policy', return_value=[]):
-                runtime.install()
-            self.assertEqual(json.loads(config.read_text()), runtime.DEFAULT)
+            config = Path(folder) / 'policy.toml'
+            config.write_text(json.dumps(runtime.DEFAULT))
+            with patch.object(runtime, 'CONFIG', config), self.assertRaises(tomllib.TOMLDecodeError):
+                runtime.load_policy()
 
     def test_existing_custom_configuration_is_preserved(self):
         with tempfile.TemporaryDirectory() as folder:

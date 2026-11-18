@@ -142,11 +142,11 @@ def clean_template_tailscale():
 def write_runtime_defaults(initializer, defaults):
     # Expose policy during template preparation, before clone finalization.
     # Do not install early-boot mounts or overwrite the operator's policy here.
-    config = Path('/etc/nodehub/readonly-runtime.json')
+    config = Path('/etc/nodehub/readonly-runtime.toml')
     if config.is_symlink():
         raise RuntimeError('Runtime configuration must not be a symbolic link')
     if not config.exists():
-        initializer.atomic_json(config, defaults)
+        initializer.atomic_write(config, defaults)
 
 
 def seal_template(initializer):
@@ -180,7 +180,7 @@ WantedBy=multi-user.target
     Path('/etc/machine-id').write_text('')
     run(['sync'])
     print('Template prepared; staying powered on for image configuration. '
-          'Edit /etc/nodehub/readonly-runtime.json, then shut down manually and capture the image. '
+          'Edit /etc/nodehub/readonly-runtime.toml, then shut down manually and capture the image. '
           'Do not reboot this source: its next boot starts enrollment.')
 
 def main():
@@ -246,7 +246,7 @@ def main():
         initializer = importlib.util.module_from_spec(spec); spec.loader.exec_module(initializer)
         runtime_spec = importlib.util.spec_from_file_location('nodehub_runtime', folder / 'client/readonly-runtime.py')
         runtime = importlib.util.module_from_spec(runtime_spec); runtime_spec.loader.exec_module(runtime)
-        write_runtime_defaults(initializer, runtime.DEFAULT)
+        write_runtime_defaults(initializer, runtime.DEFAULT_TOML)
         if manifest['terminal_enabled']:
             run(['bash', str(folder / 'agent/install.sh'), str(folder / ('bin/nodehub-agent-linux-' + arch))])
             config_file = Path('/etc/nodehub-agent/config.json')

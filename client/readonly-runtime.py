@@ -7,13 +7,30 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import tomllib
 
-CONFIG = Path('/etc/nodehub/readonly-runtime.json')
+CONFIG = Path('/etc/nodehub/readonly-runtime.toml')
 RUNTIME = Path('/run/nodehub-temporary-writes')
-DEFAULT = {'temporary_directories': [
-    {'path': '/var/lib/NetworkManager', 'memory_mb': 16, 'optional': True},
-    {'path': '/usr/local/mesh_services/meshagent', 'memory_mb': 64, 'optional': True, 'allow_exec': True},
-]}
+DEFAULT_TOML = """# Temporary writable directories on a read-only root.
+# Changes are stored in RAM and discarded on reboot.
+# Create directories before imaging. Entries must not overlap.
+# memory_mb limits capacity; optional skips missing directories.
+# allow_exec defaults to false. Enable it only for executable directories.
+
+# NetworkManager runtime state.
+[[temporary_directories]]
+path = "/var/lib/NetworkManager"
+memory_mb = 16
+optional = true
+
+# MeshAgent executable, settings, and identity database.
+[[temporary_directories]]
+path = "/usr/local/mesh_services/meshagent"
+memory_mb = 64
+optional = true
+allow_exec = true
+"""
+DEFAULT = tomllib.loads(DEFAULT_TOML)
 
 
 def run(*args):
@@ -34,7 +51,7 @@ def write_owned(path, content):
 def load_policy():
     if CONFIG.is_symlink():
         raise RuntimeError('Runtime configuration must not be a symbolic link')
-    policy = json.loads(CONFIG.read_text()) if CONFIG.exists() else DEFAULT
+    policy = tomllib.loads(CONFIG.read_text()) if CONFIG.exists() else DEFAULT
     if not isinstance(policy, dict) or set(policy) != {'temporary_directories'} or not isinstance(policy['temporary_directories'], list):
         raise RuntimeError('Expected temporary_directories configuration list')
     result = []
@@ -150,16 +167,11 @@ def install():
     if root_mount()['fstype'] == 'overlay':
         raise RuntimeError('Install runtime policy in persistent maintenance mode')
     policy = load_policy()
-    # Upgrade only the exact earlier generated default; preserve custom lists.
-    old_default = {'temporary_directories': [DEFAULT['temporary_directories'][0]]}
-    if CONFIG.exists() and json.loads(CONFIG.read_text()) == old_default:
-        CONFIG.write_text(json.dumps(DEFAULT, indent=2) + '\n')
-        policy = load_policy()
     mesh = Path('/usr/local/mesh_services/meshagent')
     if mesh.exists() and not any(item['path'] == mesh and item['allow_exec'] for item in policy):
         raise RuntimeError('Configure the MeshAgent directory with allow_exec=true before finalizing')
     if not CONFIG.exists():
-        write_owned(CONFIG, json.dumps(DEFAULT, indent=2) + '\n')
+        write_owned(CONFIG, DEFAULT_TOML)
     remove_legacy_service()
     write_owned('/etc/systemd/journald.conf.d/60-nodehub-volatile.conf',
                 '[Journal]\nStorage=volatile\nRuntimeMaxUse=64M\nRuntimeKeepFree=32M\n')
