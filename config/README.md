@@ -43,8 +43,8 @@ Enter the password and press Enter. Paste the full result into `auth.password_ha
 | `headscale.tls_skip_verify` | Default false; explicitly skip certificate verification only for this upstream’s internal HTTPS connection |
 | `headscale.public_url` | Login address reachable by nodes |
 | `headscale.api_key` | Management API key, not a node preauth key |
-| `headscale.user_id` | Numeric target user ID encoded as a JSON string; example `1` is not guaranteed correct |
-| `headscale.tags` | Preauth tags according to your Headscale policy; may be empty |
+| `headscale.user_id` | Numeric preauth user ID encoded as a JSON string; used for untagged node ownership. Tagged nodes are verified by their exact configured tag set instead. Example `1` is not guaranteed correct |
+| `headscale.tags` | Full `tag:...` values for preauth keys; may be empty. Binding requires the exact tag set; tagged nodes do not need to retain the configured user as owner |
 | `meshcentral.enabled` | Enable only after this section has real values |
 | `meshcentral.internal_url` | Complete control WebSocket URL; local plaintext listeners may need `ws://meshcentral:888/control.ashx`, while TLS listeners use `wss://…/control.ashx` |
 | `meshcentral.tls_skip_verify` | Default false; explicitly skip certificate verification only for this upstream’s internal WSS connection |

@@ -8,6 +8,8 @@ import hashlib
 from unittest.mock import Mock
 import getpass
 import tempfile
+import ssl
+import urllib.error
 import json
 import base64
 
@@ -133,6 +135,36 @@ class BootstrapTests(unittest.TestCase):
                 bootstrap.fetch_asset(opener, 'https://hub.example.com', 'client/nodehub-init.py', invalid)
         with self.assertRaisesRegex(RuntimeError, 'Unexpected'):
             bootstrap.fetch_asset(opener, 'https://hub.example.com', '../config/config.json', metadata)
+
+    def test_tls_eof_retries_public_download_then_succeeds(self):
+        opener = Mock()
+        opener.open.side_effect = [urllib.error.URLError(ssl.SSLEOFError(8, 'unexpected EOF')), io.BytesIO(b'ok')]
+        with patch.object(bootstrap.time, 'sleep') as sleep:
+            self.assertEqual(bootstrap.download(opener, 'https://hub.example.com/bootstrap/manifest?arch=amd64', 100), b'ok')
+        self.assertEqual(opener.open.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    def test_tls_eof_retry_limit_includes_failed_resource(self):
+        opener = Mock()
+        opener.open.side_effect = urllib.error.URLError(ssl.SSLEOFError(8, 'unexpected EOF'))
+        with patch.object(bootstrap.time, 'sleep'), self.assertRaisesRegex(RuntimeError, '/bootstrap/files/client/install.sh after 3 attempts'):
+            bootstrap.download(opener, 'https://hub.example.com/bootstrap/files/client/install.sh', 100)
+        self.assertEqual(opener.open.call_count, 3)
+
+    def test_certificate_failure_and_http_denial_are_not_retried(self):
+        for error in (urllib.error.URLError(ssl.SSLCertVerificationError('certificate verify failed')),
+                      urllib.error.HTTPError('https://hub.example.com/bootstrap/manifest', 403, 'Forbidden', {}, None)):
+            opener = Mock(); opener.open.side_effect = error
+            with patch.object(bootstrap.time, 'sleep') as sleep, self.assertRaises(RuntimeError):
+                bootstrap.download(opener, 'https://hub.example.com/bootstrap/manifest', 100)
+            self.assertEqual(opener.open.call_count, 1)
+            sleep.assert_not_called()
+
+    def test_http_gateway_failure_is_retried(self):
+        opener = Mock()
+        opener.open.side_effect = [urllib.error.HTTPError('https://hub.example.com/bootstrap/manifest', 502, 'Bad Gateway', {}, None), io.BytesIO(b'ok')]
+        with patch.object(bootstrap.time, 'sleep'):
+            self.assertEqual(bootstrap.download(opener, 'https://hub.example.com/bootstrap/manifest', 100), b'ok')
 
     def test_redirects_are_not_followed(self):
         with self.assertRaisesRegex(RuntimeError, 'redirects'):

@@ -85,3 +85,11 @@ MeshAgent now uses `/usr/local/mesh_services/meshagent` on the persistent root b
 Tailscale and native Agent identities retain their existing root paths. The initializer installs `nodehub-temporary-writes.service` to keep the root read-only and provide RAM writes only for directories listed in `/etc/nodehub/readonly-runtime.toml`. Existing nodes require the updated runtime helper and setup to be installed in persistent maintenance mode; they are not migrated automatically. Persistent MeshAgent directory mode is 0700, and settings are 0600; `/data/nodehub` must be root-owned and not writable by other users. This new storage arrangement requires fresh-device acceptance, including multiple reboots and missing-/data boot. Tailscale renewal/relogin on a read-only root is not validated by MeshAgent tests.
 
 The device list labels channels as Tailscale, MeshAgent, and native Agent. Public IP is the last globally routable source address reported by MeshCentral, not a separate external IP probe; a proxy/VPN may change its meaning. Missing/private addresses show a dash, offline nodes retain their last observation, and failed sync preserves cached data.
+
+## HTTPS download interruptions
+
+Public manifest and asset GETs retry transient TLS EOF, connection resets/timeouts and HTTP 408/429/500/502/503/504 up to three attempts, waiting 1 then 2 seconds. Errors identify the resource path without printing enrollment credentials. Certificate validation failures and non-transient HTTP errors are not retried; redirects, size limits and SHA256 checks remain enforced. A TLS failure while downloading the package occurs before installation and image sealing; rerun the installer without deleting node identities. Persistent failures require checking the TLS termination proxy and the node network.
+
+## Tagged Headscale nodes
+
+Headscale 0.29 tagged nodes have tag ownership and may appear as `tagged-devices` instead of the configured user. Binding requires the exact configured tag set, matching serial and node public key, and the preauth key issued for that node on first association. Untagged nodes still require the configured user ID. Existing bound-node and uniqueness checks remain enforced. After updating the center, a pending initializer retries the same identity; no logout, identity deletion or token replacement is required.

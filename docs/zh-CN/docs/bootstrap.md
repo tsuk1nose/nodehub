@@ -75,3 +75,11 @@ curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
 MeshAgent 现安装于持久根目录 `/usr/local/mesh_services/meshagent`，首次登记在启用 OverlayFS 前保存程序、配置和独立身份基线。默认运行目录策略提供 64 MiB 内存写入层并设置 `allow_exec: true`，运行修改重启后丢弃。服务等待运行目录挂载并检查目录可写，不再依赖 `/data`。旧 `/data` 安装不自动迁移，这轮应使用未登记的新模板测试。
 
 Tailscale 和原生 Agent 身份保持原根目录路径。初始化现安装 `nodehub-temporary-writes.service`，根目录默认只读，仅为 `/etc/nodehub/readonly-runtime.toml` 指定的目录提供内存写入层；旧节点需在持久维护模式安装更新的运行目录工具并重新运行配置，不会自动迁移。MeshAgent 目录权限为 0700、设置为 0600，`/data/nodehub` 须为 root 拥有且其他用户不可写。新方案需新机验证跨重启身份、连接与缺少 /data 时开机行为；MeshAgent 测试不能替代只读根目录下 Tailscale 续期及重新登录验证。
+
+## HTTPS 下载中断
+
+公开清单和资源 GET 遇到临时 TLS EOF、连接重置/超时或 HTTP 408/429/500/502/503/504 时，最多尝试三次，间隔 1、2 秒。报错显示失败资源路径，不输出初始化令牌。证书验证失败和非临时 HTTP 错误不重试，重定向限制、大小及 SHA256 校验保持启用。下载阶段 TLS 失败发生在安装和封装清理之前，可以重跑安装命令，不要删除节点身份。持续失败需检查 TLS 入口代理及节点网络。
+
+## Headscale 标签节点
+
+Headscale 0.29 的标签节点由标签拥有，可能显示为 `tagged-devices`，不再要求归属配置的用户。首次绑定校验完整配置标签集合、序列号、节点公钥及中心为该节点下发的预授权密钥；无标签节点仍严格匹配配置的 user ID。已绑定关系和唯一性约束保持不变。更新中心后，未完成初始化的节点会用已有身份自动重试，无需 logout、删除身份或更换令牌。

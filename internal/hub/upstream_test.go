@@ -200,3 +200,79 @@ func TestMeshPublicIP(t *testing.T) {
 		t.Fatal("mapped IPv4 not normalized")
 	}
 }
+
+func TestHeadscaleTaggedNodeBinding(t *testing.T) {
+	for _, tt := range []struct {
+		name                        string
+		tags                        []string
+		owner, pak, serial, nodeKey string
+		ok                          bool
+	}{
+		{"tag owner without user", []string{"tag:edge", "tag:site"}, "", "77", "", "", true},
+		{"synthetic tag owner", []string{"tag:site", "tag:edge"}, "2147455555", "77", "", "", true},
+		{"foreign preauth", []string{"tag:edge", "tag:site"}, "", "78", "", "", false},
+		{"missing tag", []string{"tag:edge"}, "", "77", "", "", false},
+		{"extra tag", []string{"tag:edge", "tag:site", "tag:admin"}, "", "77", "", "", false},
+		{"untagged expected user", nil, "7", "77", "", "", false},
+		{"wrong serial", []string{"tag:edge", "tag:site"}, "", "77", "OTHER", "", false},
+		{"wrong node key", []string{"tag:edge", "tag:site"}, "", "77", "", strings.Repeat("b", 64), false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := testStore(t)
+			_, token, _ := s.NewToken("tagged", "", 1)
+			id, err := s.Register(context.Background(), token, randomHex(32), randomHex(32))
+			if err != nil {
+				t.Fatal(err)
+			}
+			key := strings.Repeat("a", 64)
+			nodeName := id
+			if tt.serial != "" {
+				nodeName = tt.serial
+			}
+			nodeKey := key
+			if tt.nodeKey != "" {
+				nodeKey = tt.nodeKey
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v1/preauthkey":
+					reply(w, 200, map[string]any{"preAuthKey": map[string]string{"id": "77", "key": "issued-secret"}})
+				case "/api/v1/node":
+					reply(w, 200, map[string]any{"nodes": []any{map[string]any{"id": "42", "name": strings.ToLower(nodeName), "nodeKey": "nodekey:" + nodeKey, "tags": tt.tags, "user": map[string]string{"id": tt.owner}, "preAuthKey": map[string]string{"id": tt.pak, "key": "***"}}}})
+				}
+			}))
+			defer srv.Close()
+			c := Config{}
+			c.Headscale.Enabled = true
+			c.Headscale.InternalURL = srv.URL
+			c.Headscale.UserID = "7"
+			c.Headscale.Tags = []string{"tag:edge", "tag:site"}
+			u := NewUpstream(c, s)
+			if _, err = u.Preauth(context.Background(), id); err != nil {
+				t.Fatal(err)
+			}
+			err = u.BindHead(context.Background(), id, key)
+			if (err == nil) != tt.ok {
+				t.Fatalf("binding error %v; want success=%v", err, tt.ok)
+			}
+			if tt.ok {
+				if err = u.BindHead(context.Background(), id, key); err != nil {
+					t.Fatal("retry failed", err)
+				}
+			}
+		})
+	}
+}
+
+func TestHeadscaleUntaggedOwnershipRemainsStrict(t *testing.T) {
+	var n HeadNode
+	n.User.ID = "8"
+	if headOwnershipMatches(n, "7", nil) {
+		t.Fatal("foreign user accepted")
+	}
+	n.User.ID = "7"
+	n.Tags = []string{"tag:edge"}
+	if headOwnershipMatches(n, "7", nil) {
+		t.Fatal("unexpected tagged node accepted")
+	}
+}

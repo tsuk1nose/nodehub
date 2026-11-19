@@ -1,6 +1,8 @@
 """Root provisioning tests use only temporary directories and mocked commands."""
 import importlib.util
 import json
+import io
+import urllib.error
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -10,6 +12,26 @@ from unittest.mock import Mock, patch
 spec = importlib.util.spec_from_file_location('nodehub_init', Path(__file__).with_name('nodehub-init.py'))
 init = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(init)
+
+class ClientErrorTest(unittest.TestCase):
+    def test_conflict_identifies_endpoint_and_known_cause(self):
+        state = {'server': 'https://hub.example.com', 'credential': 'private'}
+        client = init.Client(state)
+        client.opener = Mock()
+        payload = json.dumps({'error': 'MeshAgent has not appeared yet'}).encode()
+        client.opener.open.side_effect = urllib.error.HTTPError('https://hub.example.com', 409, 'Conflict', {}, io.BytesIO(payload))
+        with self.assertRaisesRegex(RuntimeError, '409 for /node/TEST/meshcentral-auto-bind: MeshAgent has not appeared yet'):
+            client.request('/node/TEST/meshcentral-auto-bind', {})
+
+    def test_unknown_server_message_and_query_are_not_logged(self):
+        client = init.Client({'server': 'https://hub.example.com', 'credential': 'private'})
+        client.opener = Mock()
+        client.opener.open.side_effect = urllib.error.HTTPError('https://hub.example.com', 409, 'Conflict', {}, io.BytesIO(b'{"error":"secret token value"}'))
+        with self.assertRaises(RuntimeError) as caught:
+            client.request('/node/TEST/headscale-bind?token=private', {})
+        self.assertNotIn('secret', str(caught.exception))
+        self.assertNotIn('private', str(caught.exception))
+        self.assertIn('/headscale-bind', str(caught.exception))
 
 class SSHProvisionTest(unittest.TestCase):
     def setUp(self):

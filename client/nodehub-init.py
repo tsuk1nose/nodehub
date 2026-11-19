@@ -78,7 +78,28 @@ class Client:
             with self.opener.open(req, timeout=40) as r:
                 return json.load(r)
         except urllib.error.HTTPError as e:
-            raise RuntimeError(f'The center returned HTTP {e.code}; check authorization, bindings, and upstream configuration') from None
+            # Only expose known server messages, never arbitrary proxy bodies or credentials.
+            hints = {
+                'Multiple MeshCentral devices match this serial',
+                'MeshAgent has not appeared yet',
+                'MeshCentral binding conflict',
+                'Cannot verify the Headscale node identity; retry later',
+                'Both upstream identities must be bound',
+                'Request SSH provisioning before confirming installation',
+                'SSH provisioning denied; check the Agent identity and pinned host key; replacement is not allowed',
+                'Agent identity is already bound or revoked; replacement is not allowed',
+            }
+            hint = 'check authorization, bindings, and upstream configuration'
+            try:
+                detail = json.loads(e.read(4096)).get('error')
+                if isinstance(detail, str) and detail in hints:
+                    hint = detail
+            except (ValueError, AttributeError, OSError):
+                pass
+            finally:
+                e.close()
+            endpoint = urllib.parse.urlsplit(path).path
+            raise RuntimeError(f'The center returned HTTP {e.code} for {endpoint}: {hint}') from None
         except urllib.error.URLError:
             raise RuntimeError('Cannot securely connect to the center; check the network, system clock, and certificates') from None
     def stage(self, value):

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -31,6 +32,7 @@ type HeadNode struct {
 	Online   bool     `json:"online"`
 	LastSeen string   `json:"lastSeen"`
 	IPs      []string `json:"ipAddresses"`
+	Tags     []string `json:"tags"`
 	User     struct {
 		ID string `json:"id"`
 	} `json:"user"`
@@ -187,6 +189,24 @@ func (u *Upstream) MeshNodes(ctx context.Context) ([]MeshNode, error) {
 		return out, nil
 	}
 }
+
+// Tagged nodes are owned by their tags, not the user that issued the key.
+// Ownership is only one check: BindHead still verifies node key, serial,
+// issued preauth identity on first bind, and any existing node association.
+func headOwnershipMatches(n HeadNode, userID string, tags []string) bool {
+	if len(tags) == 0 {
+		return len(n.Tags) == 0 && n.User.ID == userID
+	}
+	expected, actual := map[string]bool{}, map[string]bool{}
+	for _, tag := range tags {
+		expected[tag] = true
+	}
+	for _, tag := range n.Tags {
+		actual[tag] = true
+	}
+	return maps.Equal(expected, actual)
+}
+
 func (u *Upstream) BindHead(ctx context.Context, id, key string) error {
 	if !u.cfg.Headscale.Enabled {
 		return errors.New("Headscale not configured")
@@ -200,7 +220,7 @@ func (u *Upstream) BindHead(ctx context.Context, id, key string) error {
 		return e
 	}
 	for _, n := range ns {
-		if strings.TrimPrefix(n.NodeKey, "nodekey:") == key && strings.EqualFold(n.Name, id) && n.User.ID == u.cfg.Headscale.UserID {
+		if strings.TrimPrefix(n.NodeKey, "nodekey:") == key && strings.EqualFold(n.Name, id) && headOwnershipMatches(n, u.cfg.Headscale.UserID, u.cfg.Headscale.Tags) {
 			var previous string
 			if e = u.store.db.QueryRow(`SELECT headscale_id FROM nodes WHERE serial=?`, id).Scan(&previous); e != nil {
 				return e

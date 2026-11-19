@@ -4,6 +4,7 @@ import argparse
 import base64
 import shutil
 import getpass
+import http.client
 import fcntl
 import warnings
 import hashlib
@@ -13,8 +14,11 @@ from pathlib import Path
 import platform
 import re
 import subprocess
+import ssl
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -36,11 +40,35 @@ def checked_file(name):
         'bin/nodehub-agent-linux-amd64', 'bin/nodehub-agent-linux-arm64',
     }
 
+def retryable_download_error(error):
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code in (408, 429, 500, 502, 503, 504)
+    reason = error.reason if isinstance(error, urllib.error.URLError) else error
+    return isinstance(reason, (ssl.SSLEOFError, ConnectionError, TimeoutError,
+                               http.client.IncompleteRead, http.client.RemoteDisconnected))
+
+
 def download(opener, url, limit):
-    with opener.open(url, timeout=90) as response:
-        content = response.read(limit + 1)
-    if len(content) > limit: raise RuntimeError('Bootstrap download exceeds the size limit')
-    return content
+    # All downloads are idempotent public GETs, with no enrollment credentials.
+    path = urllib.parse.urlsplit(url).path
+    attempts = 3
+    for attempt in range(attempts):
+        try:
+            with opener.open(url, timeout=90) as response:
+                content = response.read(limit + 1)
+            if len(content) > limit:
+                raise RuntimeError('Bootstrap download exceeds the size limit: ' + path)
+            return content
+        except (OSError, http.client.HTTPException) as error:
+            if not retryable_download_error(error):
+                raise RuntimeError('HTTPS download failed for ' + path + ': ' + str(error)) from None
+            if attempt + 1 == attempts:
+                reason = error.reason if isinstance(error, urllib.error.URLError) else error
+                raise RuntimeError('HTTPS download failed for ' + path + ' after 3 attempts (' +
+                                   type(reason).__name__ + '); check the TLS proxy and network') from None
+            print('Temporary HTTPS interruption while downloading ' + path +
+                  '; retrying (' + str(attempt + 2) + '/3)', file=sys.stderr)
+            time.sleep(attempt + 1)
 
 def fetch_asset(opener, server, name, metadata):
     if not checked_file(name): raise RuntimeError('Unexpected bootstrap file')
@@ -234,7 +262,7 @@ def main():
     if not required.issubset(files): raise RuntimeError('The center bootstrap package is incomplete')
     with tempfile.TemporaryDirectory(prefix='nodehub-package-') as temp:
         folder = Path(temp)
-        for name in required:
+        for name in sorted(required):
             content = fetch_asset(opener, server, name, files[name])
             path = folder / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(content)
         run(['bash', str(folder / 'client/install.sh')])
